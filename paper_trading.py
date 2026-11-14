@@ -47,6 +47,8 @@ def initialize(db_path: Path = DB_PATH):
             "exit_fee": "REAL NOT NULL DEFAULT 0",
             "slippage_rate": "REAL NOT NULL DEFAULT 0",
             "liquidation_price": "REAL",
+            "cumulative_funding": "REAL NOT NULL DEFAULT 0",
+            "last_funding_timestamp": "INTEGER NOT NULL DEFAULT 0",
         }
         for name, definition in additions.items():
             if name not in columns:
@@ -130,7 +132,7 @@ def close_trade(trade_id: str, exit_price: float, db_path: Path=DB_PATH):
         fill=float(exit_price)*(1-row["slippage_rate"] if row["side"]=="LONG" else 1+row["slippage_rate"])
         gross_pnl=(fill-row["entry_price"])*row["quantity"]*sign
         exit_fee=fill*row["quantity"]*row["fee_rate"]
-        pnl=gross_pnl-row["entry_fee"]-exit_fee
+        pnl=gross_pnl-row["entry_fee"]-exit_fee+row["cumulative_funding"]
         now=_now()
         conn.execute("""UPDATE paper_trades SET status='CLOSED',closed_at=?,exit_price=?,realized_pnl=?,exit_fee=? WHERE id=?""",
                      (now,fill,pnl,exit_fee,trade_id))
@@ -178,6 +180,45 @@ def monitor_open_trades(prices: dict[str,float], db_path: Path=DB_PATH):
                              (row["margin_used"]+gross_pnl-exit_fee,now))
                 events.append({"trade_id":row["id"],"event":outcome,"exit_price":float(price),"realized_pnl":pnl})
     return events
+
+
+def apply_funding_rate(exchange: str, symbol: str, funding_rate: float,
+                       funding_timestamp: int, db_path: Path=DB_PATH):
+    """Apply a funding settlement once per open position and exchange timestamp."""
+    if not -0.1 <= float(funding_rate) <= 0.1:
+        raise ValueError("Funding rate outside the supported safety range.")
+    if int(funding_timestamp) <= 0:
+        raise ValueError("A valid funding settlement timestamp is required.")
+    initialize(db_path)
+    applied = []
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    if now_ms < int(funding_timestamp):
+        return applied
+    with _connection(db_path) as conn:
+        rows = conn.execute(
+            "SELECT * FROM paper_trades WHERE status='OPEN' AND exchange=? AND symbol=?",
+            (exchange, symbol)
+        ).fetchall()
+        for row in rows:
+            if int(row["last_funding_timestamp"] or 0) >= int(funding_timestamp):
+                continue
+            notional = row["entry_price"] * row["quantity"]
+            direction = 1 if row["side"] == "LONG" else -1
+            payment = -direction * notional * float(funding_rate)
+            now = _now()
+            conn.execute(
+                "UPDATE paper_trades SET cumulative_funding=cumulative_funding+?,last_funding_timestamp=? WHERE id=?",
+                (payment, int(funding_timestamp), row["id"])
+            )
+            conn.execute(
+                "UPDATE paper_account SET cash_balance=cash_balance+?,updated_at=? WHERE id=1",
+                (payment, now)
+            )
+            applied.append({"trade_id": row["id"], "funding_payment": payment,
+                            "funding_rate": float(funding_rate),
+                            "funding_timestamp": int(funding_timestamp)})
+    return applied
+
 
 def list_trades(status: Optional[str]=None, limit: int=100, db_path: Path=DB_PATH):
     initialize(db_path)
