@@ -415,7 +415,12 @@ def _execute_bybit_demo_signal(signal_row: dict) -> dict:
         market = ex.market(symbol)
         if not market.get("swap") or market.get("quote") != "USDT":
             raise RuntimeError("Only USDT-settled Bybit perpetual markets are allowed.")
-        ex.set_leverage(LEVERAGE, symbol)
+        try:
+            ex.set_leverage(LEVERAGE, symbol)
+        except Exception as leverage_exc:
+            message = str(leverage_exc).lower()
+            if "110043" not in message and "not modified" not in message:
+                raise
         base_quantity = BYBIT_DEMO_ORDER_NOTIONAL_USDT / entry
         contract_size = float(market.get("contractSize") or 1)
         amount = float(ex.amount_to_precision(symbol, base_quantity / contract_size))
