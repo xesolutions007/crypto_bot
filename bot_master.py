@@ -99,6 +99,20 @@ async def _position_monitor_loop():
                         last = ex.fetch_ticker(symbol).get("last")
                         if last and float(last) > 0:
                             prices[exchange_name + "|" + symbol] = float(last)
+                        if trade_market_type == "swap" and ex.has.get("fetchFundingRate"):
+                            try:
+                                funding = ex.fetch_funding_rate(symbol)
+                                rate = funding.get("fundingRate")
+                                settlement_ms = funding.get("nextFundingTimestamp")
+                                if rate is not None and settlement_ms:
+                                    funding_events = await asyncio.to_thread(
+                                        paper_trading.apply_funding_rate,
+                                        exchange_name, symbol, float(rate), int(settlement_ms)
+                                    )
+                                    if funding_events:
+                                        last_scan["funding_events"] = funding_events
+                            except Exception as funding_exc:
+                                print(f"Funding data warning [{exchange_name} {symbol}]: {type(funding_exc).__name__}: {str(funding_exc)[:140]}")
                 except Exception as exc:
                     print(f"Paper monitor warning [{exchange_name}]: {type(exc).__name__}: {str(exc)[:160]}")
                 finally:
@@ -203,6 +217,7 @@ def get_dashboard_data():
         "price_change": price_change,
         "market_data_error": market_error,
         "risk_events": risk_events + last_scan.get("risk_events", []),
+        "funding_events": last_scan.get("funding_events", []),
         "last_scan": last_scan,
         "market_intelligence": {
             "open_interest": None,
