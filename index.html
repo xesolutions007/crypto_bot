@@ -274,7 +274,7 @@
 
         async function executeQuickTrade() {
             const size = document.getElementById('tradeSize').value;
-            await fetch('/api/place-trade', {
+            const res = await fetch('/api/place-trade', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ side: activeSide.toUpperCase(), size: size, symbol: 'BTC/USDT:USDT', strategy: 'Manual Paper Trade' })
