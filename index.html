@@ -124,6 +124,7 @@
             </div>
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                 <span id="scannerStatus" style="font-size:12px;color:var(--text-secondary);">Scanner: Paused</span>
+                <span id="executionModeStatus" style="font-size:11px;color:#e0b15a;">Execution: Signal only</span>
                 <button class="ex-btn" id="scannerToggleBtn" onclick="toggleScanner()" style="background:var(--accent-green);color:#000;">START SCANNER</button>
             </div>
             <div class="connection-status">
@@ -286,6 +287,9 @@
                 const res = await fetch('/api/dashboard-data', { cache: 'no-store' });
                 const data = await res.json();
                 const running = Boolean(data.scanner_running);
+                const execution = Boolean(data.bybit_demo_auto_execution) && data.active_exchange === 'Bybit Demo' && data.market_type === 'swap';
+                document.getElementById('executionModeStatus').innerText = execution ? 'Execution: Bybit Demo orders enabled' : 'Execution: Signal only';
+                document.getElementById('executionModeStatus').style.color = execution ? 'var(--accent-green)' : '#e0b15a';
                 document.getElementById('scannerStatus').innerText = running ? 'Scanner: Running' : 'Scanner: Paused';
                 const btn = document.getElementById('scannerToggleBtn');
                 btn.innerText = running ? 'PAUSE SCANNER' : 'START SCANNER';
