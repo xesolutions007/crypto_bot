@@ -1,0 +1,7 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+ccxt>=4.5.6
+pandas>=2.1
+python-dotenv>=1.0
+feedparser>=6.0
+pytest>=8.0
