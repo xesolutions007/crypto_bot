@@ -14,7 +14,7 @@ def open_position(path, side="LONG", stop=99, leverage=7):
     return paper_trading.open_trade(
         exchange="Bybit Demo", market_type="swap", symbol="BTC/USDT:USDT",
         strategy="test", side=side, entry_price=100, quantity=1,
-        stop_loss=stop, leverage=leverage, target_rr=5, db_path=path,
+        stop_loss=stop, leverage=leverage, target_rr=5, fee_rate=0, slippage_rate=0, db_path=path,
     )
 
 
@@ -73,3 +73,31 @@ def test_monitor_uses_exchange_specific_prices(db):
     assert binance["id"] not in closed_ids
     open_ids = {t["id"] for t in paper_trading.list_trades("OPEN", db_path=db)}
     assert binance["id"] in open_ids
+
+
+
+def test_fees_reduce_net_realized_pnl(db):
+    trade = paper_trading.open_trade(
+        exchange="Bybit Demo", market_type="swap", symbol="BTC/USDT:USDT",
+        strategy="cost-test", side="LONG", entry_price=100, quantity=1,
+        leverage=7, fee_rate=0.001, slippage_rate=0, db_path=db,
+    )
+    closed = paper_trading.close_trade(trade["id"], 110, db)
+    assert closed["entry_fee"] == pytest.approx(0.1)
+    assert closed["exit_fee"] == pytest.approx(0.11)
+    assert closed["realized_pnl"] == pytest.approx(9.79)
+
+
+def test_long_estimated_liquidation_price_is_below_entry(db):
+    trade = open_position(db)
+    assert trade["liquidation_price"] < trade["entry_price"]
+    assert trade["liquidation_price"] == pytest.approx(100 * (1 - (1/7 - 0.005)))
+
+
+def test_adverse_slippage_adjusts_long_entry(db):
+    trade = paper_trading.open_trade(
+        exchange="Bybit Demo", market_type="swap", symbol="BTC/USDT:USDT",
+        strategy="slippage-test", side="LONG", entry_price=100, quantity=1,
+        leverage=7, fee_rate=0, slippage_rate=0.001, db_path=db,
+    )
+    assert trade["entry_price"] == pytest.approx(100.1)
