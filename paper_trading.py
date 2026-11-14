@@ -146,17 +146,17 @@ def monitor_open_trades(prices: dict[str,float], db_path: Path=DB_PATH):
         for row in rows:
             price=prices.get(f'{row["exchange"]}|{row["symbol"]}', prices.get(row["symbol"]))
             if price is None or float(price)<=0: continue
-            if row["initial_stop_loss"] is None: continue
-            risk=abs(row["entry_price"]-row["initial_stop_loss"])
-            if risk<=0: continue
             long=row["side"]=="LONG"
-            trigger=row["entry_price"]+(1 if long else -1)*risk*1.5
             stop=row["stop_loss"]
             be=bool(row["break_even_activated"])
-            if not be and ((long and price>=trigger) or (not long and price<=trigger)):
-                stop=row["entry_price"]; be=True
-                conn.execute("UPDATE paper_trades SET stop_loss=?,break_even_activated=1 WHERE id=?",(stop,row["id"]))
-                events.append({"trade_id":row["id"],"event":"BREAK_EVEN_ACTIVATED","stop_loss":stop})
+            if row["initial_stop_loss"] is not None:
+                risk=abs(row["entry_price"]-row["initial_stop_loss"])
+                if risk>0:
+                    trigger=row["entry_price"]+(1 if long else -1)*risk*1.5
+                    if not be and ((long and price>=trigger) or (not long and price<=trigger)):
+                        stop=row["entry_price"]; be=True
+                        conn.execute("UPDATE paper_trades SET stop_loss=?,break_even_activated=1 WHERE id=?",(stop,row["id"]))
+                        events.append({"trade_id":row["id"],"event":"BREAK_EVEN_ACTIVATED","stop_loss":stop})
             outcome=None
             liq=row["liquidation_price"]
             if liq is not None and ((long and price<=liq) or (not long and price>=liq)):
@@ -169,7 +169,7 @@ def monitor_open_trades(prices: dict[str,float], db_path: Path=DB_PATH):
                 sign=1 if long else -1
                 fill=float(price)*(1-row["slippage_rate"] if long else 1+row["slippage_rate"])
                 gross_pnl=(fill-row["entry_price"])*row["quantity"]*sign
-                exit_fee=fill*row["quantity"]*0.0006
+                exit_fee=fill*row["quantity"]*row["fee_rate"]
                 pnl=gross_pnl-row["entry_fee"]-exit_fee
                 now=_now()
                 conn.execute("UPDATE paper_trades SET status='CLOSED',closed_at=?,exit_price=?,realized_pnl=?,exit_fee=? WHERE id=?",
