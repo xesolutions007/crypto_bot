@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Exchange Trading Bot - Smart Trading & Advanced Analytics</title>
+    <title>Multi-Exchange Trading Module Bot</title>
     <!-- Lightweight TradingView Chart Widget Library -->
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <style>
@@ -94,7 +94,7 @@
         <div class="logo-area">
             <span class="logo-icon">🤖</span>
             <div class="logo-text">
-                <h2>Multi-Exchange Bot</h2>
+                <h2>Multi-Exchange Trading Modules</h2>
                 <p>Smart Trading & Analytics</p>
             </div>
         </div>
@@ -118,13 +118,13 @@
         <header>
             <div class="exchange-tabs">
                 <button class="ex-btn" onclick="switchExchange('Binance')">BINANCE</button>
-                <button class="ex-btn active" id="bybitBtn" onclick="switchExchange('Bybit Testnet')">BYBIT</button>
+                <button class="ex-btn active" id="bybitBtn" onclick="switchExchange('Bybit Demo')">BYBIT</button>
                 <button class="ex-btn" onclick="switchExchange('KuCoin')">KUCOIN</button>
                 <button class="ex-btn" onclick="switchExchange('Bitget')">BITGET</button>
             </div>
             <div class="connection-status">
                 <div class="dot"></div>
-                <span id="connectionText" style="color: var(--accent-green);">Bybit Demo Trading Connected</span>
+                <span id="connectionText" style="color: var(--accent-green);">Checking connection...</span>
             </div>
         </header>
 
@@ -132,27 +132,27 @@
         <div class="metrics-grid">
             <div class="metric-card">
                 <h4>Total Balance (USDT)</h4>
-                <div class="value" id="totalBalance">10,000.00</div>
+                <div class="value" id="totalBalance">—</div>
                 <div class="sub">▲ +0.00%</div>
             </div>
             <div class="metric-card">
                 <h4>Total P&L (Today)</h4>
-                <div class="value" style="color: var(--accent-green);" id="todayPnl">+125.50 USDT</div>
+                <div class="value" style="color: var(--accent-green);" id="todayPnl">— USDT</div>
                 <div class="sub" id="pnlPerc">▲ +1.26%</div>
             </div>
             <div class="metric-card">
                 <h4>Open Positions</h4>
-                <div class="value" id="openPos">2 Live</div>
+                <div class="value" id="openPos">0 Paper</div>
                 <div class="sub">BTC/USDT, ETH/USDT</div>
             </div>
             <div class="metric-card">
                 <h4>Win Rate</h4>
-                <div class="value" id="winRate">75.0%</div>
+                <div class="value" id="winRate">N/A</div>
                 <div class="sub">▲ +5.0%</div>
             </div>
             <div class="metric-card">
                 <h4>Daily Drawdown</h4>
-                <div class="value" style="color: var(--accent-red);" id="drawdown">-1.2%</div>
+                <div class="value" style="color: var(--accent-red);" id="drawdown">N/A</div>
                 <div class="sub">Within Limit</div>
             </div>
         </div>
@@ -163,7 +163,7 @@
             <div class="panel">
                 <div class="panel-title">
                     <span>BTC/USDT 15m - Bybit Paper Trading</span>
-                    <span style="color: var(--accent-green); font-size: 11px;" id="livePriceTicker">C: 68,045.7 (+0.30%)</span>
+                    <span style="color: var(--accent-green); font-size: 11px;" id="livePriceTicker">Market price unavailable</span>
                 </div>
                 <div id="tradingview_widget"></div>
             </div>
@@ -172,8 +172,8 @@
             <div style="display: flex; flex-direction: column; gap: 14px;">
                 <div class="panel">
                     <div class="panel-title"><span>Market Intelligence</span><span style="color: var(--accent-green); font-size: 10px;">● Live</span></div>
-                    <div class="market-intel-item"><span>Open Interest</span><span style="color: #fff; font-weight: 600;" id="oiVal">$12.45B ▲ +2.1%</span></div>
-                    <div class="market-intel-item"><span>CVD (Spot)</span><span style="color: var(--accent-green); font-weight: 600;">+864K</span></div>
+                    <div class="market-intel-item"><span>Open Interest</span><span style="color: #fff; font-weight: 600;" id="oiVal">Unavailable</span></div>
+                    <div class="market-intel-item"><span>CVD (Spot)</span><span style="color: var(--accent-green); font-weight: 600;">Unavailable</span></div>
                     <div class="market-intel-item"><span>Liquidation Heatmap</span><span style="color: var(--accent-green);">Balanced</span></div>
                     <div class="market-intel-item"><span>Footprint (Aggressive)</span><span style="color: var(--accent-green);">Bullish Delta</span></div>
                 </div>
@@ -209,10 +209,10 @@
             <div class="panel">
                 <div class="panel-title">Trade Performance</div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-                    <div><span style="font-size: 10px; color: var(--text-secondary);">Total Trades</span><div style="font-size: 16px; font-weight: 700;">18</div></div>
-                    <div><span style="font-size: 10px; color: var(--text-secondary);">Win Rate</span><div style="font-size: 16px; font-weight: 700; color: var(--accent-green);">72.2%</div></div>
+                    <div><span style="font-size: 10px; color: var(--text-secondary);">Total Trades</span><div style="font-size: 16px; font-weight: 700;">—</div></div>
+                    <div><span style="font-size: 10px; color: var(--text-secondary);">Win Rate</span><div style="font-size: 16px; font-weight: 700; color: var(--accent-green);">N/A</div></div>
                 </div>
-                <div><span style="font-size: 10px; color: var(--text-secondary);">Total P&L</span><div style="font-size: 16px; font-weight: 700; color: var(--accent-green);">+320.75 USDT</div></div>
+                <div><span style="font-size: 10px; color: var(--text-secondary);">Total P&L</span><div style="font-size: 16px; font-weight: 700; color: var(--accent-green);">— USDT</div></div>
             </div>
 
             <div class="panel">
@@ -241,7 +241,7 @@
     <script>
         new TradingView.widget({
             "autosize": true,
-            "symbol": "BINANCE:BTCUSDT",
+            "symbol": "BYBIT:BTCUSDT",
             "interval": "15",
             "timezone": "Etc/UTC",
             "theme": "dark",
@@ -267,7 +267,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ exchange: ex })
             });
-            document.getElementById('connectionText').innerText = ex + " Demo Trading Connected";
+            document.getElementById('connectionText').innerText = ex + " selected — verify connection";
         }
 
         async function executeQuickTrade() {
@@ -277,7 +277,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ side: activeSide, size: size, symbol: 'BTC/USDT' })
             });
-            alert('Paper ' + activeSide + ' order of ' + size + ' USDT executed successfully!');
+            alert('Paper trade request sent to the local simulator only. No exchange order was sent.');
         }
 
         async function fetchLiveDashboardData() {
@@ -285,13 +285,13 @@
                 const res = await fetch('/api/dashboard-data');
                 const data = await res.json();
                 
-                document.getElementById('totalBalance').innerText = data.total_balance.toLocaleString(undefined, {minimumFractionDigits: 2});
+                document.getElementById('totalBalance').innerText = Number(data.paper_balance ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2});
                 document.getElementById('todayPnl').innerText = data.today_pnl + " USDT";
-                document.getElementById('openPos').innerText = data.open_positions_count + " Live";
+                document.getElementById('openPos').innerText = data.open_positions_count + " Paper";
                 document.getElementById('winRate').innerText = data.win_rate;
                 document.getElementById('drawdown').innerText = data.daily_drawdown;
-                document.getElementById('oiVal').innerText = data.market_intelligence.open_interest + " ▲ " + data.market_intelligence.open_interest_change;
-                document.getElementById('livePriceTicker').innerText = `C: ${data.current_price} (${data.price_change >= 0 ? '+' : ''}${data.price_change}%)`;
+                document.getElementById('oiVal').innerText = (data.market_intelligence.open_interest ?? "Unavailable");
+                document.getElementById('livePriceTicker').innerText = `C: ${data.current_price ?? 'Unavailable'} (${data.price_change ?? 'N/A'}%)`;
             } catch(e) {
                 console.error("Sync error:", e);
             }
