@@ -122,6 +122,10 @@
                 <button class="ex-btn" onclick="switchExchange('KuCoin')">KUCOIN</button>
                 <button class="ex-btn" onclick="switchExchange('Bitget')">BITGET</button>
             </div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <span id="scannerStatus" style="font-size:12px;color:var(--text-secondary);">Scanner: Paused</span>
+                <button class="ex-btn" id="scannerToggleBtn" onclick="toggleScanner()" style="background:var(--accent-green);color:#000;">START SCANNER</button>
+            </div>
             <div class="connection-status">
                 <div class="dot" id="connectionDot" style="background-color: var(--text-secondary); box-shadow: none;"></div>
                 <span id="connectionText" style="color: var(--text-secondary);">Checking connection...</span>
@@ -277,6 +281,37 @@
             document.getElementById('shortBtn').className = side === 'Short' ? 'qt-btn active-short' : 'qt-btn';
         }
 
+        async function refreshScannerStatus() {
+            try {
+                const res = await fetch('/api/dashboard-data', { cache: 'no-store' });
+                const data = await res.json();
+                const running = Boolean(data.scanner_running);
+                document.getElementById('scannerStatus').innerText = running ? 'Scanner: Running' : 'Scanner: Paused';
+                const btn = document.getElementById('scannerToggleBtn');
+                btn.innerText = running ? 'PAUSE SCANNER' : 'START SCANNER';
+                btn.style.background = running ? 'var(--accent-red)' : 'var(--accent-green)';
+                btn.style.color = running ? '#fff' : '#000';
+            } catch (err) {
+                document.getElementById('scannerStatus').innerText = 'Scanner: Status unavailable';
+            }
+        }
+
+        async function toggleScanner() {
+            const btn = document.getElementById('scannerToggleBtn');
+            btn.disabled = true;
+            try {
+                const res = await fetch('/api/toggle', { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok || data.status !== 'success') throw new Error(data.detail || 'Scanner could not be toggled');
+                await refreshScannerStatus();
+                await fetchLiveDashboardData();
+            } catch (err) {
+                alert('Could not change scanner state: ' + String(err.message || err));
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
         async function checkExchangeConnection() {
             const label = document.getElementById('connectionText');
             const dot = document.getElementById('connectionDot');
@@ -395,6 +430,7 @@
         setInterval(fetchLiveDashboardData, 3000);
         fetchLiveDashboardData();
         checkExchangeConnection();
+        refreshScannerStatus();
     </script>
 </body>
 </html>
