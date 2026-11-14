@@ -286,7 +286,7 @@
             try {
                 const res = await fetch('/api/dashboard-data', { cache: 'no-store' });
                 const data = await res.json();
-                const running = Boolean(data.scanner_running);
+                const running = typeof data.scanner_running === 'boolean' ? data.scanner_running : data.status === 'Running';
                 const execution = Boolean(data.bybit_demo_auto_execution) && data.active_exchange === 'Bybit Demo' && data.market_type === 'swap';
                 document.getElementById('executionModeStatus').innerText = execution ? 'Execution: Bybit Demo orders enabled' : 'Execution: Signal only';
                 document.getElementById('executionModeStatus').style.color = execution ? 'var(--accent-green)' : '#e0b15a';
