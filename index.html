@@ -43,7 +43,7 @@
         .dot { width: 8px; height: 8px; background-color: var(--accent-green); border-radius: 50%; box-shadow: 0 0 8px var(--accent-green); }
 
         /* Metrics Bar */
-        .metrics-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+        .metrics-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
         .metric-card { background-color: var(--card-bg); border: 1px solid var(--card-border); padding: 12px 14px; border-radius: 10px; }
         .metric-card h4 { font-size: 11px; color: var(--text-secondary); font-weight: 500; margin-bottom: 6px; }
         .metric-card .value { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 2px; }
@@ -123,8 +123,9 @@
                 <button class="ex-btn" onclick="switchExchange('Bitget')">BITGET</button>
             </div>
             <div class="connection-status">
-                <div class="dot"></div>
-                <span id="connectionText" style="color: var(--accent-green);">Checking connection...</span>
+                <div class="dot" id="connectionDot" style="background-color: var(--text-secondary); box-shadow: none;"></div>
+                <span id="connectionText" style="color: var(--text-secondary);">Checking connection...</span>
+                <button class="ex-btn" onclick="checkExchangeConnection()" style="margin-left:8px;">REFRESH API</button>
             </div>
         </header>
 
@@ -133,7 +134,12 @@
             <div class="metric-card">
                 <h4>Total Balance (USDT)</h4>
                 <div class="value" id="totalBalance">—</div>
-                <div class="sub">Local paper account</div>
+                <div class="sub">Local paper account — simulation only</div>
+            </div>
+            <div class="metric-card">
+                <h4>Bybit Demo Available (USDT)</h4>
+                <div class="value" id="exchangeBalance">—</div>
+                <div class="sub" id="exchangeBalanceLabel">API balance not checked</div>
             </div>
             <div class="metric-card">
                 <h4>Total P&L (Today)</h4>
@@ -261,6 +267,43 @@
             document.getElementById('shortBtn').className = side === 'Short' ? 'qt-btn active-short' : 'qt-btn';
         }
 
+        async function checkExchangeConnection() {
+            const label = document.getElementById('connectionText');
+            const dot = document.getElementById('connectionDot');
+            const balance = document.getElementById('exchangeBalance');
+            const balanceLabel = document.getElementById('exchangeBalanceLabel');
+            label.innerText = 'Checking API...';
+            label.style.color = 'var(--text-secondary)';
+            dot.style.backgroundColor = 'var(--text-secondary)';
+            dot.style.boxShadow = 'none';
+            try {
+                const res = await fetch('/api/connection-check', { cache: 'no-store' });
+                const data = await res.json();
+                if (data.status === 'connected' && data.authenticated) {
+                    label.innerText = data.exchange + ' API authenticated';
+                    label.style.color = 'var(--accent-green)';
+                    dot.style.backgroundColor = 'var(--accent-green)';
+                    dot.style.boxShadow = '0 0 8px var(--accent-green)';
+                    balance.innerText = data.usdt_balance_available == null ? 'N/A' : Number(data.usdt_balance_available).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    balanceLabel.innerText = 'Demo account — read-only check';
+                } else if (data.status === 'connected') {
+                    label.innerText = data.exchange + ' market data only';
+                    label.style.color = '#e0b15a';
+                    dot.style.backgroundColor = '#e0b15a';
+                    balance.innerText = '—';
+                    balanceLabel.innerText = 'API account not authenticated';
+                } else {
+                    throw new Error(data.error || 'Connection check failed');
+                }
+            } catch (err) {
+                label.innerText = 'API connection error';
+                label.style.color = 'var(--accent-red)';
+                dot.style.backgroundColor = 'var(--accent-red)';
+                balance.innerText = '—';
+                balanceLabel.innerText = String(err.message || err).slice(0, 90);
+            }
+        }
+
         async function switchExchange(ex) {
             await fetch('/api/switch-exchange', {
                 method: 'POST',
@@ -268,6 +311,7 @@
                 body: JSON.stringify({ exchange: ex, market_type: "swap" })
             });
             document.getElementById('connectionText').innerText = ex + " selected — checking...";
+            await checkExchangeConnection();
             await checkExchangeConnection();
             await fetchLiveDashboardData();
         }
@@ -311,6 +355,7 @@
         // Poll live updates every 3 seconds
         setInterval(fetchLiveDashboardData, 3000);
         fetchLiveDashboardData();
+        checkExchangeConnection();
     </script>
 </body>
 </html>
