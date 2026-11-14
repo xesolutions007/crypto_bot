@@ -9,3 +9,6 @@ __pycache__/
 venv/
 .pytest_cache/
 .coverage
+
+# Local HTTPS certificate and private key
+certs/
