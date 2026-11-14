@@ -318,12 +318,46 @@ def place_paper_trade(data: PaperTradeRequest):
 
 
 @app.post("/api/close-paper-trade/{trade_id}")
-def close_paper_trade(trade_id: str, data: dict):
+def close_paper_trade(trade_id: str):
+    """Close a local paper position at the latest exchange ticker; never submits an order."""
+    trade = next((t for t in paper_trading.list_trades(status="OPEN", limit=1000) if t["id"] == trade_id), None)
+    if trade is None:
+        raise HTTPException(404, "Open paper trade not found.")
     try:
-        exit_price = float(data.get("exit_price"))
-        return {"status": "closed", "trade": paper_trading.close_trade(trade_id, exit_price)}
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(400, str(exc))
+        price = latest_position_prices.get(trade["exchange"] + "|" + trade["symbol"])
+        if not price:
+            ex = create_exchange(trade["exchange"], trade["market_type"], require_auth=False)
+            try:
+                ex.load_markets()
+                price = ex.fetch_ticker(trade["symbol"]).get("last")
+            finally:
+                try: ex.close()
+                except Exception: pass
+        if not price or float(price) <= 0:
+            raise HTTPException(502, "Could not obtain a current market price. Try again shortly.")
+        closed = paper_trading.close_trade(trade_id, float(price))
+        return {"status": "closed", "trade": closed, "exit_reference_price": float(price),
+                "warning": "Local paper position closed only. No exchange order was sent."}
+    except HTTPException: raise
+    except ValueError as exc: raise HTTPException(400, str(exc))
+    except Exception as exc: raise HTTPException(502, f"Could not close paper position: {type(exc).__name__}: {str(exc)[:160]}")
+
+
+@app.get("/api/open-positions")
+def get_open_positions():
+    positions = paper_trading.list_trades(status="OPEN", limit=1000)
+    result = []
+    for trade in positions:
+        price = latest_position_prices.get(trade["exchange"] + "|" + trade["symbol"])
+        unrealized = None if price is None else (float(price) - trade["entry_price"]) * trade["quantity"] * (1 if trade["side"] == "LONG" else -1)
+        result.append({
+            "id": trade["id"], "exchange": trade["exchange"], "symbol": trade["symbol"],
+            "side": trade["side"], "entry_price": trade["entry_price"], "current_price": price,
+            "leverage": trade["leverage"], "margin_used": trade["margin_used"],
+            "unrealized_pnl": unrealized, "stop_loss": trade["stop_loss"],
+            "take_profit": trade["take_profit"], "opened_at": trade["opened_at"],
+        })
+    return {"positions": result, "count": len(result), "mode": "LOCAL_PAPER_ONLY"}
 
 
 @app.get("/api/paper-trades")
