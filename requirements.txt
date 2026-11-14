@@ -5,3 +5,4 @@ pandas>=2.1
 python-dotenv>=1.0
 feedparser>=6.0
 pytest>=8.0
+cryptography>=42.0
