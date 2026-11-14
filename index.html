@@ -192,11 +192,21 @@
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                         <div class="form-group"><label>Leverage</label><select class="form-control" id="tradeLeverage"><option value="7" selected>7x (paper)</option></select></div>
-                        <div class="form-group"><label>Position Notional (USDT)</label><input type="number" class="form-control" value="100" min="1" id="tradeSize"></div>\n                        <div class="form-group" style="grid-column: 1 / -1;"><label>Stop Loss Price (required for automatic risk monitoring)</label><input type="number" class="form-control" step="any" placeholder="Enter stop-loss price" id="tradeStopLoss"></div>
+                        <div class="form-group"><label>Position Notional (USDT)</label><input type="number" class="form-control" value="100" min="1" id="tradeSize"></div>
+                        <div class="form-group"><label>Stop Loss Price</label><input type="number" class="form-control" step="any" placeholder="Optional stop-loss" id="tradeStopLoss"></div>
+                        <div class="form-group" style="grid-column: 1 / -1;"><label>Take Profit Price</label><input type="number" class="form-control" step="any" placeholder="Optional take-profit" id="tradeTakeProfit"></div>
                     </div>
                     <button class="btn-execute" onclick="executeQuickTrade()">Place Paper Trade</button>
                 </div>
             </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">Open Paper Positions <span style="font-size:10px;color:var(--text-secondary);">Local simulation only</span></div>
+            <div style="overflow-x:auto;"><table>
+                <thead><tr><th>Pair / Side</th><th>Entry</th><th>Current</th><th>Leverage</th><th>Margin</th><th>Unrealized P&amp;L</th><th>Stop Loss</th><th>Take Profit</th><th>Action</th></tr></thead>
+                <tbody id="openPositionsTable"><tr><td colspan="9">Loading open positions...</td></tr></tbody>
+            </table></div>
         </div>
 
         <!-- Strategy Modules Grid -->
@@ -321,7 +331,7 @@
             const res = await fetch('/api/place-trade', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ side: activeSide.toUpperCase(), size: size, symbol: 'BTC/USDT:USDT', strategy: 'Manual Paper Trade', leverage: Number(document.getElementById('tradeLeverage').value), stop_loss: document.getElementById('tradeStopLoss').value ? Number(document.getElementById('tradeStopLoss').value) : null })
+                body: JSON.stringify({ side: activeSide.toUpperCase(), size: size, symbol: 'BTC/USDT:USDT', strategy: 'Manual Paper Trade', leverage: Number(document.getElementById('tradeLeverage').value), stop_loss: document.getElementById('tradeStopLoss').value ? Number(document.getElementById('tradeStopLoss').value) : null, take_profit: document.getElementById('tradeTakeProfit').value ? Number(document.getElementById('tradeTakeProfit').value) : null })
             });
             const result = await res.json();
             if (!res.ok) { alert(result.detail || 'Paper trade could not be opened.'); return; }
@@ -347,9 +357,38 @@
                 document.getElementById('totalTrades').innerText = rows.length;
                 document.getElementById('performanceWinRate').innerText = data.win_rate;
                 document.getElementById('totalPnl').innerText = `${data.today_pnl} USDT`;
+                await fetchOpenPositions();
             } catch(e) {
                 console.error("Sync error:", e);
             }
+        }
+
+        async function fetchOpenPositions() {
+            const body = document.getElementById('openPositionsTable');
+            try {
+                const res = await fetch('/api/open-positions', { cache: 'no-store' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Could not load open positions');
+                const rows = data.positions || [];
+                body.innerHTML = rows.length ? rows.map(p => {
+                    const pnl = p.unrealized_pnl == null ? 'N/A' : Number(p.unrealized_pnl).toFixed(4);
+                    const pnlColor = p.unrealized_pnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+                    return `<tr><td>${p.symbol}<br>${p.side}</td><td>${Number(p.entry_price).toFixed(4)}</td><td>${p.current_price == null ? 'Waiting...' : Number(p.current_price).toFixed(4)}</td><td>${Number(p.leverage).toFixed(1)}x</td><td>${Number(p.margin_used).toFixed(2)}</td><td style="color:${pnlColor}">${pnl}</td><td>${p.stop_loss == null ? '—' : Number(p.stop_loss).toFixed(4)}</td><td>${p.take_profit == null ? '—' : Number(p.take_profit).toFixed(4)}</td><td><button class="ex-btn" onclick="closePaperPosition('${p.id}')">Close</button></td></tr>`;
+                }).join('') : '<tr><td colspan="9">No open paper positions</td></tr>';
+            } catch (err) {
+                body.innerHTML = `<tr><td colspan="9">Unable to load positions: ${String(err.message || err)}</td></tr>`;
+            }
+        }
+
+        async function closePaperPosition(tradeId) {
+            if (!confirm('Close this local paper position at the latest available market price? This will not send an order to Bybit.')) return;
+            try {
+                const res = await fetch('/api/close-paper-trade/' + encodeURIComponent(tradeId), { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Could not close paper position');
+                alert('Paper position closed locally. Realized P&L: ' + Number(data.trade.realized_pnl).toFixed(4) + ' USDT. No exchange order was sent.');
+                await fetchLiveDashboardData();
+            } catch (err) { alert('Close failed: ' + String(err.message || err)); }
         }
 
         // Poll live updates every 3 seconds
