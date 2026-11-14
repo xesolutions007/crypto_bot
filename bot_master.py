@@ -50,6 +50,7 @@ class PaperTradeRequest(BaseModel):
     strategy: str = "Manual Paper Trade"
     stop_loss: Optional[float] = Field(default=None, gt=0)
     take_profit: Optional[float] = Field(default=None, gt=0)
+    leverage: float = Field(default=LEVERAGE, ge=1, le=125)
 
 
 @app.on_event("startup")
@@ -204,6 +205,7 @@ def place_paper_trade(data: PaperTradeRequest):
             symbol=data.symbol, strategy=data.strategy, side=data.side,
             entry_price=float(entry), quantity=quantity,
             stop_loss=data.stop_loss, take_profit=data.take_profit,
+            leverage=data.leverage, target_rr=TARGET_RR,
         )
         return {"status": "paper_trade_opened", "trade": trade,
                 "warning": "Local simulation only. No exchange order was sent.",\n                "margin_required": trade["margin_used"],\n                "leverage": trade["leverage"],\n                "risk_monitoring": "Enabled only when a stop-loss is supplied."}
