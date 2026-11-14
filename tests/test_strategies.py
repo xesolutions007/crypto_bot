@@ -68,7 +68,7 @@ def test_module_4_detects_bounce_with_high_open_interest():
     rows[-1] = [104.9, 105.2, 104, 104.5, 100]
     frame = candles(rows)
     signal = StrategyModules.evaluate_module_4(
-        frame, {"open_interest": 1_100_000_000}, "NEUTRAL", 104.5
+        frame, {"open_interest": 1_100_000_000}, "NEUTRAL", 104.1
     )
     assert signal["module"] == "Strategy Module IV"
     assert signal["direction"] == "LONG"
