@@ -43,6 +43,7 @@ def initialize(db_path: Path = DB_PATH):
             "initial_stop_loss": "REAL",
             "break_even_activated": "INTEGER NOT NULL DEFAULT 0",
             "entry_fee": "REAL NOT NULL DEFAULT 0",
+            "fee_rate": "REAL NOT NULL DEFAULT 0.0006",
             "exit_fee": "REAL NOT NULL DEFAULT 0",
             "slippage_rate": "REAL NOT NULL DEFAULT 0",
             "liquidation_price": "REAL",
@@ -111,11 +112,11 @@ def open_trade(exchange: str, market_type: str, symbol: str, strategy: str,
         conn.execute("""INSERT INTO paper_trades(
             id,exchange,market_type,symbol,strategy,side,entry_price,quantity,stop_loss,
             take_profit,status,opened_at,leverage,margin_used,initial_stop_loss,
-            entry_fee,slippage_rate,liquidation_price)
-            VALUES(?,?,?,?,?,?,?,?,?,?, 'OPEN',?,?,?,?,?,?,?)""",
+            entry_fee,fee_rate,slippage_rate,liquidation_price)
+            VALUES(?,?,?,?,?,?,?,?,?,?, 'OPEN',?,?,?,?,?,?,?,?)""",
             (trade_id,exchange,market_type,symbol,strategy,side,float(entry_price),
              float(quantity),stop_loss,take_profit,now,float(leverage),margin,stop_loss,
-             entry_fee,float(slippage_rate),liquidation_price))
+             entry_fee,float(fee_rate),float(slippage_rate),liquidation_price))
         conn.execute("UPDATE paper_account SET cash_balance=cash_balance-?,updated_at=? WHERE id=1",(margin+entry_fee,now))
         return dict(conn.execute("SELECT * FROM paper_trades WHERE id=?",(trade_id,)).fetchone())
 
@@ -128,7 +129,7 @@ def close_trade(trade_id: str, exit_price: float, db_path: Path=DB_PATH):
         sign=1.0 if row["side"]=="LONG" else -1.0
         fill=float(exit_price)*(1-row["slippage_rate"] if row["side"]=="LONG" else 1+row["slippage_rate"])
         gross_pnl=(fill-row["entry_price"])*row["quantity"]*sign
-        exit_fee=fill*row["quantity"]*0.0006
+        exit_fee=fill*row["quantity"]*row["fee_rate"]
         pnl=gross_pnl-row["entry_fee"]-exit_fee
         now=_now()
         conn.execute("""UPDATE paper_trades SET status='CLOSED',closed_at=?,exit_price=?,realized_pnl=?,exit_fee=? WHERE id=?""",
