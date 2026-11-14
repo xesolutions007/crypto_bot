@@ -200,6 +200,7 @@ def get_dashboard_data():
     )
     return {
         "status": "Running" if bot_running else "Paused",
+        "scanner_running": bool(bot_running),
         "active_exchange": current_exchange_name,
         "active_symbol": current_symbol,
         "market_type": market_type,
@@ -268,8 +269,20 @@ def switch_symbol(data: dict):
 def toggle_bot():
     global bot_running
     bot_running = not bot_running
-    return {"status": "success", "bot_running": bot_running,
-            "note": "Scanner toggle only; automated order execution is disabled."}
+    return {
+        "status": "success",
+        "bot_running": bot_running,
+        "automated_execution": bool(
+            bot_running and BYBIT_DEMO_AUTO_EXECUTION
+            and current_exchange_name == "Bybit Demo" and market_type == "swap"
+            and not LIVE_TRADING_ENABLED
+        ),
+        "note": (
+            "Scanner is running. Eligible Strategy I/II signals may submit protected "
+            "orders to Bybit Demo when Demo auto-execution is enabled. Live trading remains disabled."
+            if bot_running else "Scanner is paused; no new automatic signals will be processed."
+        ),
+    }
 
 
 @app.post("/api/capital")
