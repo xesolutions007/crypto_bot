@@ -13,7 +13,9 @@ except ImportError:
     pass
 
 APP_MODE = os.getenv("APP_MODE", "PAPER").strip().upper()
-LIVE_TRADING_ENABLED = False  # Hard safety lock: live orders are not implemented.
+LIVE_TRADING_ENABLED = False  # Hard safety lock: live orders are never routed.
+BYBIT_DEMO_AUTO_EXECUTION = os.getenv("BYBIT_DEMO_AUTO_EXECUTION", "false").strip().lower() == "true"
+BYBIT_DEMO_ORDER_NOTIONAL_USDT = float(os.getenv("BYBIT_DEMO_ORDER_NOTIONAL_USDT", "25"))
 BYBIT_ENVIRONMENT = os.getenv("BYBIT_ENVIRONMENT", "demo").strip().lower()
 BYBIT_API_KEY = os.getenv("BYBIT_API_KEY", "")
 BYBIT_API_SECRET = os.getenv("BYBIT_API_SECRET", "")
