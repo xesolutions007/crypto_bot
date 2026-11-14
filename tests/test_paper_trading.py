@@ -56,3 +56,20 @@ def test_take_profit_is_five_r(db):
     assert trade["take_profit"] == pytest.approx(105)
     events = paper_trading.monitor_open_trades({"BTC/USDT:USDT": 105}, db)
     assert any(e["event"] == "TAKE_PROFIT" for e in events)
+
+def test_monitor_uses_exchange_specific_prices(db):
+    bybit = open_position(db, stop=99)
+    binance = paper_trading.open_trade(
+        exchange="Binance", market_type="swap", symbol="BTC/USDT:USDT",
+        strategy="test", side="LONG", entry_price=100, quantity=1,
+        stop_loss=99, leverage=7, target_rr=5, db_path=db,
+    )
+    events = paper_trading.monitor_open_trades({
+        "Bybit Demo|BTC/USDT:USDT": 98,
+        "Binance|BTC/USDT:USDT": 101,
+    }, db)
+    closed_ids = {e["trade_id"] for e in events if e["event"] == "STOP_LOSS"}
+    assert bybit["id"] in closed_ids
+    assert binance["id"] not in closed_ids
+    open_ids = {t["id"] for t in paper_trading.list_trades("OPEN", db_path=db)}
+    assert binance["id"] in open_ids
