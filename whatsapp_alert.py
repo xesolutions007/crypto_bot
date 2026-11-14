@@ -1,12 +1,14 @@
-import urllib.parse
-import requests
+"""WhatsApp notification placeholder.
 
-def send_whatsapp_alert(message, phone_number="+94777915274"):
-    """
-    Dispatches automated trade alerts and daily PnL summaries 
-    directly to your WhatsApp number.
-    """
-    # Formatted for integration with Twilio or Meta WhatsApp Cloud API gateways
-    print(f"\n[WHATSAPP NOTIFICATION -> {phone_number}]")
-    print(message)
-    print("-" * 40)
+No messages are sent by this module. Configure a supported provider and explicit
+user opt-in before implementing any real WhatsApp delivery.
+"""
+
+
+def send_whatsapp_alert(message, phone_number=None):
+    """Safely report that delivery is not configured; never print personal data."""
+    return {
+        "sent": False,
+        "status": "not_configured",
+        "message": "WhatsApp delivery is not implemented. No message was sent.",
+    }
