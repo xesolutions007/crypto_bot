@@ -18,10 +18,31 @@ A local dashboard and **paper-trading-only** research project for Binance, Bybit
 
 1. Install Python 3.10 or newer and ensure the Python launcher (`py`) is available.
 2. Extract the project ZIP into a folder you control.
-3. Double-click `start_bot.bat`. It creates a virtual environment, installs requirements, creates `.env` if missing, and starts the dashboard.
-4. Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+3. Configure the friendly local hostname once (see **Friendly HTTPS address** below).
+4. Double-click `start_bot.bat`. It creates a virtual environment, installs requirements, creates `.env` if missing, generates a local HTTPS certificate if needed, and starts the dashboard.
+5. Open [https://botstrategiesmodules:8000/](https://botstrategiesmodules:8000/).
 
-### Manual setup
+### Friendly HTTPS address (one-time Windows setup)
+
+The hostname is local to your computer; it is not a public internet domain.
+
+1. Open Notepad **as Administrator**.
+2. Open this file: `C:\Windows\System32\drivers\etc\hosts` (choose **All Files** in the file picker).
+3. Add this line at the bottom and save:
+
+   ```text
+   127.0.0.1 botstrategiesmodules
+   ```
+
+4. Run `start_bot.bat` once. It creates:
+   - `certs\botstrategiesmodules.crt` (local HTTPS certificate)
+   - `certs\botstrategiesmodules.key` (private key; keep it on this computer)
+5. To remove the browser's certificate warning, press **Win + R**, run `certmgr.msc`, open **Trusted Root Certification Authorities > Certificates**, then import `certs\botstrategiesmodules.crt` into **Current User**'s Trusted Root store. Only trust this certificate on your own computer. Restart the browser and open the HTTPS address.
+6. Keep the generated private key local. Do not upload the `certs` folder or share the private key.
+
+If Windows or your browser still reports a certificate warning, check that the certificate was imported into the Current User Trusted Root store and that the certificate was generated for the exact hostname `botstrategiesmodules`.
+
+### Manual setup (optional)
 
 ```bat
 py -m venv .venv
@@ -30,7 +51,8 @@ py -m pip install --upgrade pip
 pip install -r requirements.txt
 copy .env.example .env
 notepad .env
-python bot_master.py
+python generate_local_cert.py
+python -m uvicorn bot_master:app --host 127.0.0.1 --port 8000 --ssl-keyfile certs\botstrategiesmodules.key --ssl-certfile certs\botstrategiesmodules.crt
 ```
 
 Enter API credentials only in the local `.env` file. Public market data can be accessed without credentials; the connection check attempts account verification only when credentials are configured.
@@ -94,7 +116,7 @@ Run locally from the project folder:
 .venv\Scripts\python.exe -m pytest -q
 ```
 
-The GitHub Actions workflow also runs the test suite on pushes to the working branch.
+The GitHub Actions workflow runs the test suite on pushes to the working branch and builds a clean project ZIP artifact after successful tests.
 
 ## API endpoints
 
@@ -113,4 +135,4 @@ The GitHub Actions workflow also runs the test suite on pushes to the working br
 
 ## Local address
 
-Default: [http://127.0.0.1:8000](http://127.0.0.1:8000). The optional friendly Windows hostname has not been configured; it requires a local hosts-file entry or DNS setup.
+Dashboard: [https://botstrategiesmodules:8000/](https://botstrategiesmodules:8000/). The hostname resolves locally through the Windows hosts file. HTTPS uses a self-signed certificate generated locally; trust it in Windows to avoid browser warnings. The app listens only on 127.0.0.1.
