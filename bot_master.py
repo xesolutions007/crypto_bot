@@ -95,7 +95,7 @@ def get_dashboard_data():
     except Exception as exc:
         market_error = f"{type(exc).__name__}: {str(exc)[:180]}"
 
-    paper = paper_trading.mark_to_market({current_symbol: price} if price else {})
+    risk_events = paper_trading.monitor_open_trades({current_symbol: price} if price else {})\n    paper = paper_trading.mark_to_market({current_symbol: price} if price else {})
     trades = paper_trading.list_trades(limit=10)
     closed = [t for t in trades if t["status"] == "CLOSED"]
     wins = [t for t in closed if (t["realized_pnl"] or 0) > 0]
@@ -122,7 +122,7 @@ def get_dashboard_data():
         "daily_drawdown": "N/A",
         "current_price": price,
         "price_change": price_change,
-        "market_data_error": market_error,
+        "market_data_error": market_error,\n        "risk_events": risk_events,
         "market_intelligence": {
             "open_interest": None,
             "open_interest_change": None,
@@ -206,7 +206,7 @@ def place_paper_trade(data: PaperTradeRequest):
             stop_loss=data.stop_loss, take_profit=data.take_profit,
         )
         return {"status": "paper_trade_opened", "trade": trade,
-                "warning": "Local simulation only. No exchange order was sent."}
+                "warning": "Local simulation only. No exchange order was sent.",\n                "margin_required": trade["margin_used"],\n                "leverage": trade["leverage"],\n                "risk_monitoring": "Enabled only when a stop-loss is supplied."}
     except HTTPException:
         raise
     except ValueError as exc:
