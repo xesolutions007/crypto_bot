@@ -136,3 +136,31 @@ The GitHub Actions workflow runs the test suite on pushes to the working branch 
 ## Local address
 
 Dashboard: [https://botstrategiesmodules:8000/](https://botstrategiesmodules:8000/). The hostname resolves locally through the Windows hosts file. HTTPS uses a self-signed certificate generated locally; trust it in Windows to avoid browser warnings. The app listens only on 127.0.0.1.
+
+
+## Optional Bybit Demo order execution (advanced — opt-in)
+
+The scanner can optionally submit real test orders to the **Bybit Demo** environment for Strategy I and II signals. This is separate from the local SQLite paper ledger.
+
+Safety defaults:
+- `BYBIT_DEMO_AUTO_EXECUTION=false` (disabled unless explicitly changed locally).
+- `LIVE_TRADING_ENABLED` remains hard-coded false.
+- Execution code accepts only the Bybit Demo connection and USDT-settled perpetual swap markets.
+- Each entry is a market order with attached exchange-side stop-loss and take-profit triggers. Take-profit is calculated using `TARGET_RR` (default 5R).
+- Demo order notional defaults to 25 USDT and is capped at 100 USDT per order.
+- Signals without a valid stop-loss are blocked.
+- A Demo API key with derivatives order/trade permission is required. Read-only keys can check balance but cannot place orders.
+
+To opt in, create a **Bybit Demo API key** in Bybit Demo (not a live API key). Enable only the permissions needed to read account/market data and place derivatives orders. Do not enable withdrawals or transfers. Store the key only in your local `.env` file:
+
+```dotenv
+BYBIT_ENVIRONMENT=demo
+BYBIT_DEMO_AUTO_EXECUTION=true
+BYBIT_DEMO_ORDER_NOTIONAL_USDT=25
+BYBIT_API_KEY=your_demo_key
+BYBIT_API_SECRET=your_demo_secret
+```
+
+Restart the application after changing `.env`, select **Bybit Demo** and **Swap**, refresh the API connection, then start the scanner. Successful entries should be visible in Bybit Demo orders/positions. The dashboard's local paper ledger is separate and will not mirror exchange fills. Check Bybit Demo manually for order status and attached protection. Do not assume an order filled merely because it was submitted.
+
+**Important:** This feature has not been validated against your personal Bybit Demo account or API key. First test with the small default notional and verify the order, position size, stop-loss and take-profit in Bybit Demo before leaving automatic execution enabled. Keep live trading disabled.
