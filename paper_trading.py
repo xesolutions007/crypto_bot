@@ -172,7 +172,7 @@ def monitor_open_trades(prices: dict[str,float], db_path: Path=DB_PATH):
                 fill=float(price)*(1-row["slippage_rate"] if long else 1+row["slippage_rate"])
                 gross_pnl=(fill-row["entry_price"])*row["quantity"]*sign
                 exit_fee=fill*row["quantity"]*row["fee_rate"]
-                pnl=gross_pnl-row["entry_fee"]-exit_fee
+                pnl=gross_pnl-row["entry_fee"]-exit_fee+row["cumulative_funding"]
                 now=_now()
                 conn.execute("UPDATE paper_trades SET status='CLOSED',closed_at=?,exit_price=?,realized_pnl=?,exit_fee=? WHERE id=?",
                              (now,fill,pnl,exit_fee,row["id"]))
