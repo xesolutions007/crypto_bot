@@ -1,95 +1,116 @@
 # Multi-Exchange Trading Module Bot
 
-A local dashboard and paper-trading research project. **Live order execution is disabled.**
-The current implementation stores simulated trades in a local SQLite database and uses
-exchange connections for market data and (when configured) account verification only.
+A local dashboard and **paper-trading-only** research project for Binance, Bybit Demo, KuCoin and Bitget. The application does not submit live exchange orders.
 
-## Safety first
+## Safety
 
-- Do not paste API keys into chat, source files, screenshots, or GitHub.
-- Copy `.env.example` to `.env` on your own Windows computer and enter credentials locally.
-- Keep API permissions to read/account access for the connection test. Do not enable withdrawals or transfers.
-- Restrict API access by IP where practical.
-- The dashboard's local paper trades do not appear in the Bybit mobile app.
-- This code does not submit exchange orders. Do not treat paper results as evidence of profitability.
-
-## Bybit Demo Trading
-
-Create the API key while switched into **Demo Trading** on Bybit. A Testnet key is not interchangeable.
-This project uses CCXT's `enable_demo_trading(True)`; it does not use `set_sandbox_mode(True)`.
-Bybit Demo API availability is not identical to production and some API functions may be unavailable.
+- Live trading is hard-disabled in the application. The dashboard and API create local simulated trades only.
+- Never paste API keys into chat, source files, screenshots or GitHub.
+- Copy `.env.example` to `.env` on your own Windows computer. The `.env` file is ignored by Git.
+- For Bybit, create the key while switched into **Demo Trading**. A Testnet key is not interchangeable. The application uses CCXT `enable_demo_trading(True)`.
+- Use the minimum API permissions required for account verification. Do not enable withdrawals or transfers. Restrict by IP where practical.
+- Local paper trades are stored in SQLite and do not appear in the exchange mobile app.
+- Paper results are simulations, not evidence of profitability or a promise of future results.
 
 ## Windows setup
 
-1. Install Python 3.10 or newer.
-2. Download/clone this repository branch.
-3. Open Command Prompt in the project folder.
-4. Create and activate a virtual environment:
+### Easy start
 
-   ```bat
-   py -m venv .venv
-   .venv\Scripts\activate
-   ```
+1. Install Python 3.10 or newer and ensure the Python launcher (`py`) is available.
+2. Extract the project ZIP into a folder you control.
+3. Double-click `start_bot.bat`. It creates a virtual environment, installs requirements, creates `.env` if missing, and starts the dashboard.
+4. Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 
-5. Install dependencies:
+### Manual setup
 
-   ```bat
-   py -m pip install --upgrade pip
-   pip install -r requirements.txt
-   ```
+```bat
+py -m venv .venv
+.venv\Scripts\activate
+py -m pip install --upgrade pip
+pip install -r requirements.txt
+copy .env.example .env
+notepad .env
+python bot_master.py
+```
 
-6. Copy the environment template and edit it locally:
+Enter API credentials only in the local `.env` file. Public market data can be accessed without credentials; the connection check attempts account verification only when credentials are configured.
 
-   ```bat
-   copy .env.example .env
-   notepad .env
-   ```
+## Configuration
 
-7. Set `BYBIT_API_KEY` and `BYBIT_API_SECRET` in `.env`. Never commit that file.
-8. Start the dashboard:
+Important local settings in `.env`:
 
-   ```bat
-   python bot_master.py
-   ```
+| Setting | Default | Purpose |
+|---|---:|---|
+| `DEFAULT_EXCHANGE` | `Bybit Demo` | Initial exchange |
+| `DEFAULT_SYMBOL` | `BTC/USDT:USDT` | Initial market |
+| `ACTIVE_PAIRS` | BTC, ETH, SOL USDT swaps | Scanner watchlist |
+| `PAPER_CAPITAL_USDT` | `200` | Initial local paper capital |
+| `FUTURES_LEVERAGE` | `7` | Default simulated leverage |
+| `TARGET_RR` | `5.0` | Default target risk/reward ratio when a stop is supplied |
+| `SCAN_TIMEFRAME` | `15m` | Scanner candle timeframe |
+| `SCAN_INTERVAL_SECONDS` | `60` | Scanner interval |
 
-9. Open http://127.0.0.1:8000
+The paper ledger applies configurable-in-code fee and slippage assumptions. Estimated liquidation is simplified and is not an exchange liquidation calculation. Funding is applied only when the exchange exposes the required funding-rate fields and the settlement timestamp is reached.
 
 ## Current functionality
 
-- Local SQLite paper account and trade ledger.
-- Configurable initial paper capital (default 200 USDT).
-- Public market data through CCXT.
-- Bybit Demo connection verification when local credentials are configured.
-- Manual local paper trades using the latest fetched market price.
-- Read-only strategy scan endpoint for Modules I and II.
-- Strategy signals are reported, not automatically traded.
-- Dashboard API reports unavailable data explicitly rather than fabricating figures.
+- FastAPI local dashboard and JSON API.
+- CCXT public market connections for Binance, Bybit Demo, KuCoin and Bitget; spot and swap market selection.
+- Bybit Demo account verification when local credentials are configured.
+- SQLite paper account and trade ledger, with separate exchange/symbol identity on positions.
+- Configurable paper capital and simulated leverage.
+- Manual local paper trades using a fetched exchange ticker price.
+- Background paper-position monitoring for stop-loss, take-profit, break-even and estimated liquidation events.
+- Funding settlement simulation when the exchange provides usable funding data.
+- Read-only scheduled scanner for Strategy Modules I and II; signals are reported, never automatically traded.
+- Dashboard API uses unavailable values when a real data provider is not configured.
 
-## Not yet implemented / not to be assumed available
+## Strategy module status
 
-- Automated paper position monitoring, stop/target execution and risk-based position sizing.
-- Fully integrated scanner scheduler and duplicate-signal protection.
-- Genuine OI, CVD, liquidation/heatmap, footprint, funding and large-trade providers.
-- Reliable event-time macro calendar and X/social feeds.
-- Real WhatsApp delivery.
-- Fully functional dashboard sections for every navigation item.
-- Live trading (intentionally disabled).
+| Module | Rule | Scanner status |
+|---|---|---|
+| I | SMA 20/200 crossover with Stochastic 3/3 confirmation | Scanned |
+| II | Marubozu candle; body/range greater than 0.8 | Scanned |
+| III | VWAP breakout, positive CVD and upward trend confirmation | Function and unit tests present; not connected to scanner |
+| IV | Support bounce near the recent 20-candle low with open interest above the configured threshold | Function and unit tests present; not connected to scanner |
+
+Modules III and IV are deliberately not scanned until genuine, correctly-scaled CVD and open-interest providers are connected. The application must not substitute guessed or hard-coded market-intelligence values.
+
+## Known limitations
+
+- The dashboard is an early implementation; some navigation sections and advanced analytics are placeholders.
+- Open-interest, CVD, liquidation heatmap, footprint and large-trade data providers are not configured.
+- News RSS scoring is experimental and is not a verified macro-event calendar or real-time trading pause service.
+- WhatsApp delivery is not implemented. The notification module returns a clear not-configured status and sends nothing.
+- The simplified paper liquidation estimate does not model exchange maintenance-margin tiers, fees, cross-margin or liquidation rules exactly.
+- Background price monitoring depends on network access and exchange API availability. Gaps in polling can affect simulated fills and funding settlement accuracy.
+- Live order placement is intentionally unavailable.
+
+## Tests
+
+Run locally from the project folder:
+
+```bat
+.venv\Scripts\python.exe -m pytest -q
+```
+
+The GitHub Actions workflow also runs the test suite on pushes to the working branch.
 
 ## API endpoints
 
 - `GET /api/dashboard-data`
 - `GET /api/connection-check`
 - `GET /api/strategies`
+- `GET /api/signals`
 - `GET /api/paper-trades`
 - `POST /api/switch-exchange`
 - `POST /api/switch-symbol`
 - `POST /api/capital`
+- `POST /api/toggle` — scanner only
 - `POST /api/place-trade` — local paper trade only
 - `POST /api/close-paper-trade/{trade_id}` — local paper trade only
 - `POST /api/scan-once` — read-only scan; no order execution
 
-## Notes
+## Local address
 
-The futures symbol format is typically `BTC/USDT:USDT`; spot uses `BTC/USDT`.
-The configured default market is swap. Confirm a symbol exists on the selected exchange
-before scanning or opening a simulated position.
+Default: [http://127.0.0.1:8000](http://127.0.0.1:8000). The optional friendly Windows hostname has not been configured; it requires a local hosts-file entry or DNS setup.
