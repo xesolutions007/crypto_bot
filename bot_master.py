@@ -36,6 +36,7 @@ last_scan: dict = {"status": "not_started", "signals": []}
 monitor_task = None
 scanner_task = None
 seen_signal_keys: set[str] = set()
+latest_position_prices: dict[str, float] = {}
 
 
 class CapitalUpdate(BaseModel):
@@ -107,6 +108,7 @@ async def _position_monitor_loop():
                         except Exception:
                             pass
             if prices:
+                latest_position_prices.update(prices)
                 events = await asyncio.to_thread(paper_trading.monitor_open_trades, prices)
                 if events:
                     last_scan["risk_events"] = events
@@ -168,8 +170,11 @@ def get_dashboard_data():
     except Exception as exc:
         market_error = f"{type(exc).__name__}: {str(exc)[:180]}"
 
-    risk_events = paper_trading.monitor_open_trades({current_symbol: price} if price else {})
-    paper = paper_trading.mark_to_market({current_symbol: price} if price else {})
+    dashboard_prices = dict(latest_position_prices)
+    if price:
+        dashboard_prices[current_exchange_name + "|" + current_symbol] = float(price)
+    paper = paper_trading.mark_to_market(dashboard_prices)
+    risk_events = []
     trades = paper_trading.list_trades(limit=10)
     closed = [t for t in trades if t["status"] == "CLOSED"]
     wins = [t for t in closed if (t["realized_pnl"] or 0) > 0]
