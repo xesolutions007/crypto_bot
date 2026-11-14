@@ -101,3 +101,34 @@ def test_adverse_slippage_adjusts_long_entry(db):
         leverage=7, fee_rate=0, slippage_rate=0.001, db_path=db,
     )
     assert trade["entry_price"] == pytest.approx(100.1)
+
+
+
+def test_funding_is_applied_once_and_included_in_pnl(db):
+    from datetime import datetime, timezone
+    trade = paper_trading.open_trade(
+        exchange="Bybit Demo", market_type="swap", symbol="BTC/USDT:USDT",
+        strategy="funding-test", side="LONG", entry_price=100, quantity=1,
+        leverage=7, fee_rate=0, slippage_rate=0, db_path=db,
+    )
+    settlement = int(datetime.now(timezone.utc).timestamp() * 1000) - 1000
+    first = paper_trading.apply_funding_rate("Bybit Demo", "BTC/USDT:USDT", 0.001, settlement, db)
+    second = paper_trading.apply_funding_rate("Bybit Demo", "BTC/USDT:USDT", 0.001, settlement, db)
+    assert len(first) == 1
+    assert second == []
+    current = paper_trading.list_trades("OPEN", db_path=db)[0]
+    assert current["cumulative_funding"] == pytest.approx(-0.1)
+    closed = paper_trading.close_trade(trade["id"], 100, db)
+    assert closed["realized_pnl"] == pytest.approx(-0.1)
+
+
+def test_negative_funding_credits_long(db):
+    from datetime import datetime, timezone
+    paper_trading.open_trade(
+        exchange="Bybit Demo", market_type="swap", symbol="BTC/USDT:USDT",
+        strategy="funding-test", side="LONG", entry_price=100, quantity=1,
+        leverage=7, fee_rate=0, slippage_rate=0, db_path=db,
+    )
+    settlement = int(datetime.now(timezone.utc).timestamp() * 1000) - 1000
+    events = paper_trading.apply_funding_rate("Bybit Demo", "BTC/USDT:USDT", -0.001, settlement, db)
+    assert events[0]["funding_payment"] == pytest.approx(0.1)
