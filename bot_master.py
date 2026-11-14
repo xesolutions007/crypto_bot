@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 from config import (
     ACTIVE_PAIRS, DEFAULT_EXCHANGE, DEFAULT_SYMBOL, PAPER_CAPITAL_USDT,
-    SCAN_TIMEFRAME, LEVERAGE, TARGET_RR, LIVE_TRADING_ENABLED,
+    SCAN_TIMEFRAME, SCAN_INTERVAL_SECONDS, LEVERAGE, TARGET_RR, LIVE_TRADING_ENABLED,
 )
 import paper_trading
 from exchange_manager import create_exchange, connection_check, SUPPORTED_EXCHANGES
