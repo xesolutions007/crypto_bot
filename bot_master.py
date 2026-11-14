@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from config import (
     ACTIVE_PAIRS, DEFAULT_EXCHANGE, DEFAULT_SYMBOL, PAPER_CAPITAL_USDT,
     SCAN_TIMEFRAME, SCAN_INTERVAL_SECONDS, LEVERAGE, TARGET_RR, LIVE_TRADING_ENABLED,
+    BYBIT_DEMO_AUTO_EXECUTION, BYBIT_DEMO_ORDER_NOTIONAL_USDT,
 )
 import paper_trading
 from exchange_manager import create_exchange, connection_check, SUPPORTED_EXCHANGES
@@ -203,6 +204,7 @@ def get_dashboard_data():
         "active_symbol": current_symbol,
         "market_type": market_type,
         "live_trading_enabled": LIVE_TRADING_ENABLED,
+        "bybit_demo_auto_execution": BYBIT_DEMO_AUTO_EXECUTION,
         "connection_status": last_connection_check.get("status", "not_checked"),
         "exchange_balance": last_connection_check.get("usdt_balance_available"),
         "exchange_balance_label": "Bybit Demo available USDT" if last_connection_check.get("authenticated") else "Not authenticated",
@@ -377,7 +379,7 @@ def get_strategies():
             {"name": "Strategy Module III", "description": "VWAP breakout with CVD and trend confirmation", "configured": True},
             {"name": "Strategy Module IV", "description": "B2B setup using 20-candle low and open interest", "configured": True},
         ],
-        "automated_execution": False,
+        "automated_execution": bool(BYBIT_DEMO_AUTO_EXECUTION and current_exchange_name == "Bybit Demo" and market_type == "swap"),
         "scanner_running": bot_running,
         "monitoring": "Background monitor active for all open paper positions",
     }
@@ -388,9 +390,58 @@ def get_latest_signals():
     return last_scan
 
 
+
+def _execute_bybit_demo_signal(signal_row: dict) -> dict:
+    """Submit a protected market order to Bybit Demo only; never route live."""
+    if LIVE_TRADING_ENABLED or not BYBIT_DEMO_AUTO_EXECUTION:
+        raise RuntimeError("Demo auto-execution is disabled by configuration.")
+    if current_exchange_name != "Bybit Demo" or market_type != "swap":
+        raise RuntimeError("Automatic execution is restricted to Bybit Demo USDT perpetuals.")
+    if BYBIT_DEMO_ORDER_NOTIONAL_USDT <= 0 or BYBIT_DEMO_ORDER_NOTIONAL_USDT > 100:
+        raise RuntimeError("Demo order notional must be greater than 0 and no more than 100 USDT.")
+    symbol = str(signal_row["symbol"])
+    side = str(signal_row.get("direction", "")).upper()
+    entry = float(signal_row.get("market_price") or 0)
+    stop = float(signal_row.get("sl") or 0)
+    if side not in {"LONG", "SHORT"} or entry <= 0 or stop <= 0:
+        raise RuntimeError("Signal is missing a valid side, market price, or stop-loss.")
+    if (side == "LONG" and not stop < entry) or (side == "SHORT" and not stop > entry):
+        raise RuntimeError("Signal stop-loss is on the wrong side of the market; order blocked.")
+    risk = abs(entry - stop)
+    target = entry + (risk * TARGET_RR if side == "LONG" else -risk * TARGET_RR)
+    ex = create_exchange("Bybit Demo", "swap", require_auth=True)
+    try:
+        ex.load_markets()
+        market = ex.market(symbol)
+        if not market.get("swap") or market.get("quote") != "USDT":
+            raise RuntimeError("Only USDT-settled Bybit perpetual markets are allowed.")
+        ex.set_leverage(LEVERAGE, symbol)
+        base_quantity = BYBIT_DEMO_ORDER_NOTIONAL_USDT / entry
+        contract_size = float(market.get("contractSize") or 1)
+        amount = float(ex.amount_to_precision(symbol, base_quantity / contract_size))
+        if amount <= 0 or amount * contract_size * entry > BYBIT_DEMO_ORDER_NOTIONAL_USDT * 1.02:
+            raise RuntimeError("Calculated order quantity is invalid or exceeds the configured notional cap.")
+        params = {
+            "positionIdx": 0, "tpslMode": "Full",
+            "stopLoss": {"triggerPrice": ex.price_to_precision(symbol, stop)},
+            "takeProfit": {"triggerPrice": ex.price_to_precision(symbol, target)},
+            "slTriggerBy": "MarkPrice", "tpTriggerBy": "MarkPrice",
+        }
+        order = ex.create_order(symbol, "market", "buy" if side == "LONG" else "sell", amount, None, params)
+        if not order or not order.get("id"):
+            raise RuntimeError("Bybit did not return a confirmed order ID.")
+        return {"exchange": "Bybit Demo", "symbol": symbol, "side": side,
+                "order_id": str(order["id"]), "status": order.get("status") or "submitted",
+                "amount": amount, "leverage": LEVERAGE, "reference_price": entry,
+                "stop_loss": stop, "take_profit": target, "mode": "BYBIT_DEMO"}
+    finally:
+        try: ex.close()
+        except Exception: pass
+
+
 @app.post("/api/scan-once")
 def scan_once():
-    """Run one read-only strategy scan. Signals are reported, never auto-traded."""
+    """Scan Strategies I/II; auto-submit only when explicitly enabled for Bybit Demo."""
     signals = []
     errors = []
     try:
@@ -426,6 +477,15 @@ def scan_once():
                                     strategy_name, side, str(signal_row["candle_timestamp"])])
                     if key not in seen_signal_keys:
                         seen_signal_keys.add(key)
+                        if BYBIT_DEMO_AUTO_EXECUTION and current_exchange_name == "Bybit Demo" and market_type == "swap":
+                            try:
+                                signal_row["demo_order"] = _execute_bybit_demo_signal(signal_row)
+                                signal_row["execution_status"] = "submitted_to_bybit_demo"
+                            except Exception as order_exc:
+                                signal_row["execution_status"] = "blocked_or_failed"
+                                signal_row["execution_error"] = f"{type(order_exc).__name__}: {str(order_exc)[:180]}"
+                        else:
+                            signal_row["execution_status"] = "signal_only"
                         signals.append(signal_row)
             except Exception as exc:
                 errors.append({"symbol": symbol, "error": f"{type(exc).__name__}: {str(exc)[:180]}"})
@@ -434,8 +494,9 @@ def scan_once():
         except Exception:
             pass
         return {"status": "completed", "signals": signals, "errors": errors,
-                "automatically_executed": False,
-                "note": "Modules III and IV are not scanned until genuine CVD/open-interest inputs are connected."}
+                "automatically_executed": bool(BYBIT_DEMO_AUTO_EXECUTION and current_exchange_name == "Bybit Demo" and market_type == "swap"),
+                "execution_mode": "BYBIT_DEMO" if BYBIT_DEMO_AUTO_EXECUTION and current_exchange_name == "Bybit Demo" and market_type == "swap" else "SIGNAL_ONLY",
+                "note": "Automatic orders are Bybit Demo only and require local trade-enabled Demo API credentials. Modules III and IV await genuine CVD/open-interest inputs."}
     except Exception as exc:
         raise HTTPException(502, f"Scan failed: {type(exc).__name__}: {str(exc)[:180]}")
 
