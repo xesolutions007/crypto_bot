@@ -124,7 +124,7 @@ def monitor_open_trades(prices: dict[str,float], db_path: Path=DB_PATH):
     with _connection(db_path) as conn:
         rows=conn.execute("SELECT * FROM paper_trades WHERE status='OPEN'").fetchall()
         for row in rows:
-            price=prices.get(row["symbol"])
+            price=prices.get(f'{row["exchange"]}|{row["symbol"]}', prices.get(row["symbol"]))
             if price is None or float(price)<=0: continue
             if row["initial_stop_loss"] is None: continue
             risk=abs(row["entry_price"]-row["initial_stop_loss"])
@@ -170,7 +170,7 @@ def mark_to_market(prices: dict[str,float], db_path: Path=DB_PATH):
         rows=conn.execute("SELECT * FROM paper_trades WHERE status='OPEN'").fetchall()
         unrealized=0.0
         for r in rows:
-            price=prices.get(r["symbol"])
+            price=prices.get(f'{r["exchange"]}|{r["symbol"]}', prices.get(r["symbol"]))
             if price is not None:
                 unrealized+=(float(price)-r["entry_price"])*r["quantity"]*(1 if r["side"]=="LONG" else -1)
         margin=sum(r["margin_used"] for r in rows)
