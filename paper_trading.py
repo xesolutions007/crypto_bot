@@ -183,7 +183,7 @@ def monitor_open_trades(prices: dict[str,float], db_path: Path=DB_PATH):
 
 
 def apply_funding_rate(exchange: str, symbol: str, funding_rate: float,
-                       funding_timestamp: int, db_path: Path=DB_PATH):
+                       funding_timestamp: int, mark_price: Optional[float]=None, db_path: Path=DB_PATH):
     """Apply a funding settlement once per open position and exchange timestamp."""
     if not -0.1 <= float(funding_rate) <= 0.1:
         raise ValueError("Funding rate outside the supported safety range.")
@@ -202,7 +202,8 @@ def apply_funding_rate(exchange: str, symbol: str, funding_rate: float,
         for row in rows:
             if int(row["last_funding_timestamp"] or 0) >= int(funding_timestamp):
                 continue
-            notional = row["entry_price"] * row["quantity"]
+            reference_price = float(mark_price) if mark_price and float(mark_price) > 0 else row["entry_price"]
+            notional = reference_price * row["quantity"]
             direction = 1 if row["side"] == "LONG" else -1
             payment = -direction * notional * float(funding_rate)
             now = _now()
