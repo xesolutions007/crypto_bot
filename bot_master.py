@@ -6,6 +6,7 @@ read locally for account verification only. All trade entries are written to SQL
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import asyncio
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -32,6 +33,9 @@ current_symbol = DEFAULT_SYMBOL
 market_type = "swap"
 last_connection_check: dict = {"status": "not_checked"}
 last_scan: dict = {"status": "not_started", "signals": []}
+monitor_task = None
+scanner_task = None
+seen_signal_keys: set[str] = set()
 
 
 class CapitalUpdate(BaseModel):
@@ -54,10 +58,78 @@ class PaperTradeRequest(BaseModel):
 
 
 @app.on_event("startup")
-def startup():
+async def startup():
+    global monitor_task, scanner_task
     paper_trading.initialize()
     if not paper_trading.account()["configured"]:
         paper_trading.set_capital(PAPER_CAPITAL_USDT)
+    monitor_task = asyncio.create_task(_position_monitor_loop())
+    scanner_task = asyncio.create_task(_scanner_loop())
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    for task in (monitor_task, scanner_task):
+        if task:
+            task.cancel()
+    for task in (monitor_task, scanner_task):
+        if task:
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+
+async def _position_monitor_loop():
+    """Continuously monitor all open paper positions, independent of dashboard views."""
+    while True:
+        try:
+            open_trades = await asyncio.to_thread(paper_trading.list_trades, "OPEN", 1000)
+            grouped = {}
+            for trade in open_trades:
+                grouped.setdefault((trade["exchange"], trade["market_type"]), set()).add(trade["symbol"])
+            prices = {}
+            for (exchange_name, trade_market_type), symbols in grouped.items():
+                ex = None
+                try:
+                    ex = create_exchange(exchange_name, trade_market_type, require_auth=False)
+                    ex.load_markets()
+                    for symbol in symbols:
+                        last = ex.fetch_ticker(symbol).get("last")
+                        if last and float(last) > 0:
+                            prices[exchange_name + "|" + symbol] = float(last)
+                except Exception as exc:
+                    print(f"Paper monitor warning [{exchange_name}]: {type(exc).__name__}: {str(exc)[:160]}")
+                finally:
+                    if ex:
+                        try:
+                            ex.close()
+                        except Exception:
+                            pass
+            if prices:
+                events = await asyncio.to_thread(paper_trading.monitor_open_trades, prices)
+                if events:
+                    last_scan["risk_events"] = events
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            print(f"Paper monitor loop warning: {type(exc).__name__}: {str(exc)[:160]}")
+        await asyncio.sleep(5)
+
+
+async def _scanner_loop():
+    global last_scan
+    while True:
+        try:
+            if bot_running:
+                last_scan = await asyncio.to_thread(scan_once)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            last_scan = {"status": "error", "signals": [], "errors": [
+                {"error": f"{type(exc).__name__}: {str(exc)[:180]}"}
+            ]}
+        await asyncio.sleep(max(10, SCAN_INTERVAL_SECONDS))
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -125,7 +197,8 @@ def get_dashboard_data():
         "current_price": price,
         "price_change": price_change,
         "market_data_error": market_error,
-        "risk_events": risk_events,
+        "risk_events": risk_events + last_scan.get("risk_events", []),
+        "last_scan": last_scan,
         "market_intelligence": {
             "open_interest": None,
             "open_interest_change": None,
@@ -249,7 +322,14 @@ def get_strategies():
             {"name": "Strategy Module IV", "description": "B2B setup using 20-candle low and open interest", "configured": True},
         ],
         "automated_execution": False,
+        "scanner_running": bot_running,
+        "monitoring": "Background monitor active for all open paper positions",
     }
+
+
+@app.get("/api/signals")
+def get_latest_signals():
+    return last_scan
 
 
 @app.post("/api/scan-once")
@@ -282,7 +362,15 @@ def scan_once():
                 if not signal:
                     signal = StrategyModules.evaluate_module_2(frame, {}, bias)
                 if signal:
-                    signals.append({"symbol": symbol, **signal, "market_price": price})
+                    signal_row = {"symbol": symbol, **signal, "market_price": price,
+                                  "candle_timestamp": int(frame.iloc[-1]["timestamp"])}
+                    side = str(signal.get("side", signal.get("direction", ""))).upper()
+                    strategy_name = str(signal.get("strategy", signal.get("module", "unknown")))
+                    key = "|".join([current_exchange_name, symbol, SCAN_TIMEFRAME,
+                                    strategy_name, side, str(signal_row["candle_timestamp"])])
+                    if key not in seen_signal_keys:
+                        seen_signal_keys.add(key)
+                        signals.append(signal_row)
             except Exception as exc:
                 errors.append({"symbol": symbol, "error": f"{type(exc).__name__}: {str(exc)[:180]}"})
         try:
