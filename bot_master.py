@@ -107,7 +107,7 @@ async def _position_monitor_loop():
                                 if rate is not None and settlement_ms:
                                     funding_events = await asyncio.to_thread(
                                         paper_trading.apply_funding_rate,
-                                        exchange_name, symbol, float(rate), int(settlement_ms)
+                                        exchange_name, symbol, float(rate), int(settlement_ms), float(last)
                                     )
                                     if funding_events:
                                         last_scan["funding_events"] = funding_events
