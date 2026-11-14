@@ -112,7 +112,7 @@ def test_funding_is_applied_once_and_included_in_pnl(db):
         leverage=7, fee_rate=0, slippage_rate=0, db_path=db,
     )
     settlement = int(datetime.now(timezone.utc).timestamp() * 1000) - 1000
-    first = paper_trading.apply_funding_rate("Bybit Demo", "BTC/USDT:USDT", 0.001, settlement, db)
+    first = paper_trading.apply_funding_rate("Bybit Demo", "BTC/USDT:USDT", 0.001, settlement, db_path=db)
     second = paper_trading.apply_funding_rate("Bybit Demo", "BTC/USDT:USDT", 0.001, settlement, db)
     assert len(first) == 1
     assert second == []
@@ -130,5 +130,5 @@ def test_negative_funding_credits_long(db):
         leverage=7, fee_rate=0, slippage_rate=0, db_path=db,
     )
     settlement = int(datetime.now(timezone.utc).timestamp() * 1000) - 1000
-    events = paper_trading.apply_funding_rate("Bybit Demo", "BTC/USDT:USDT", -0.001, settlement, db)
+    events = paper_trading.apply_funding_rate("Bybit Demo", "BTC/USDT:USDT", -0.001, settlement, db_path=db)
     assert events[0]["funding_payment"] == pytest.approx(0.1)
