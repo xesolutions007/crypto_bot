@@ -190,24 +190,24 @@
                 </div>
 
                 <div class="panel">
-                    <div class="panel-title">Quick Trade — Local Paper Simulation</div>
+                    <div class="panel-title">Quick Trade — Bybit Demo Account</div>
                     <div class="quick-trade-tabs">
                         <button class="qt-btn active-long" id="longBtn" onclick="setSide('Long')">Long</button>
                         <button class="qt-btn" id="shortBtn" onclick="setSide('Short')">Short</button>
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                        <div class="form-group"><label>Leverage</label><select class="form-control" id="tradeLeverage"><option value="7" selected>7x (paper)</option></select></div>
+                        <div class="form-group"><label>Market</label><select class="form-control" id="tradeMarket"><option value="swap" selected>USDT Perpetual</option><option value="spot">Spot</option></select></div><div class="form-group"><label>Order Type</label><select class="form-control" id="tradeOrderType"><option value="market">Market</option><option value="limit">Limit</option><option value="stop-limit">Stop-Limit</option></select></div><div class="form-group"><label>Leverage (Futures max 7x)</label><select class="form-control" id="tradeLeverage"><option value="7" selected>7x</option><option value="5">5x</option><option value="3">3x</option><option value="1">1x</option></select></div>
                         <div class="form-group"><label>Position Notional (USDT)</label><input type="number" class="form-control" value="100" min="1" id="tradeSize"></div>
-                        <div class="form-group"><label>Stop Loss Price</label><input type="number" class="form-control" step="any" placeholder="Optional stop-loss" id="tradeStopLoss"></div>
+                        <div class="form-group"><label>Limit Price</label><input type="number" class="form-control" step="any" placeholder="Required for Limit / Stop-Limit" id="tradeLimitPrice"></div><div class="form-group"><label>Trigger Price (Stop-Limit)</label><input type="number" class="form-control" step="any" placeholder="Required for Stop-Limit" id="tradeTriggerPrice"></div><div class="form-group"><label>Stop Loss Price</label><input type="number" class="form-control" step="any" placeholder="Optional stop-loss" id="tradeStopLoss"></div>
                         <div class="form-group" style="grid-column: 1 / -1;"><label>Take Profit Price</label><input type="number" class="form-control" step="any" placeholder="Optional take-profit" id="tradeTakeProfit"></div>
                     </div>
-                    <button class="btn-execute" onclick="executeQuickTrade()">Place Paper Trade</button>
+                    <button class="btn-execute" onclick="executeQuickTrade()">Place Bybit Demo Order</button><div style="font-size:10px;color:var(--text-secondary);margin-top:6px;">Futures Long/Short uses Hedge Mode position indices. Spot Buy/Sell is not leveraged. Order submission is not a fill confirmation.</div>
                 </div>
             </div>
         </div>
 
         <div class="panel">
-            <div class="panel-title">Open Paper Positions <span style="font-size:10px;color:var(--text-secondary);">Local simulation only — not Bybit Demo positions</span></div>
+            <div class="panel-title">Bybit Demo Open Positions <span style="font-size:10px;color:var(--text-secondary);">Exchange-sourced positions</span></div>
             <div style="overflow-x:auto;"><table>
                 <thead><tr><th>Pair / Side</th><th>Entry</th><th>Current</th><th>Leverage</th><th>Margin</th><th>Unrealized P&amp;L</th><th>Stop Loss</th><th>Take Profit</th><th>Action</th></tr></thead>
                 <tbody id="openPositionsTable"><tr><td colspan="9">Loading open positions...</td></tr></tbody>
@@ -363,15 +363,32 @@
         }
 
         async function executeQuickTrade() {
-            const size = document.getElementById('tradeSize').value;
-            const res = await fetch('/api/place-trade', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ side: activeSide.toUpperCase(), size: size, symbol: 'BTC/USDT:USDT', strategy: 'Manual Paper Trade', leverage: Number(document.getElementById('tradeLeverage').value), stop_loss: document.getElementById('tradeStopLoss').value ? Number(document.getElementById('tradeStopLoss').value) : null, take_profit: document.getElementById('tradeTakeProfit').value ? Number(document.getElementById('tradeTakeProfit').value) : null })
+            const marketType = document.getElementById('tradeMarket').value;
+            const isSpot = marketType === 'spot';
+            if (isSpot && activeSide === 'Short') {
+                alert('Spot does not support opening a leveraged Short position. Choose Futures for Long/Short.');
+                return;
+            }
+            const payload = {
+                market_type: marketType,
+                symbol: isSpot ? 'BTC/USDT' : 'BTC/USDT:USDT',
+                side: activeSide === 'Long' ? 'BUY' : 'SELL',
+                position_side: isSpot ? null : activeSide.toUpperCase(),
+                order_type: document.getElementById('tradeOrderType').value,
+                size_usdt: Number(document.getElementById('tradeSize').value),
+                leverage: Number(document.getElementById('tradeLeverage').value),
+                price: document.getElementById('tradeLimitPrice').value ? Number(document.getElementById('tradeLimitPrice').value) : null,
+                trigger_price: document.getElementById('tradeTriggerPrice').value ? Number(document.getElementById('tradeTriggerPrice').value) : null,
+                stop_loss: document.getElementById('tradeStopLoss').value ? Number(document.getElementById('tradeStopLoss').value) : null,
+                take_profit: document.getElementById('tradeTakeProfit').value ? Number(document.getElementById('tradeTakeProfit').value) : null
+            };
+            if (isSpot) { payload.symbol = 'BTC/USDT'; payload.leverage = 1; payload.stop_loss = null; payload.take_profit = null; }
+            const res = await fetch('/api/bybit-demo/order', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
             });
             const result = await res.json();
-            if (!res.ok) { alert(result.detail || 'Paper trade could not be opened.'); return; }
-            alert(`Paper trade opened locally. Margin reserved: ${Number(result.margin_required).toFixed(2)} USDT at ${result.leverage}x. No exchange order was sent.`);
+            if (!res.ok) { alert(result.detail || 'Bybit Demo order failed.'); return; }
+            alert('Bybit Demo order submitted. Order ID: ' + result.order.order_id + '. Check Bybit Demo order history for its fill status.');
             await fetchLiveDashboardData();
         }
 
