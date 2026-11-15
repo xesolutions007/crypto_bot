@@ -3,41 +3,70 @@
 All authenticated calls use CCXT's Demo Trading endpoint. Never route live orders.
 """
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, Callable, Any
+import time
+import ccxt
 from exchange_manager import create_exchange
 
+READ_RETRY_ATTEMPTS = 3
+READ_RETRY_BASE_DELAY = 1.0
 
-def _client():
-    return create_exchange("Bybit Demo", "swap", require_auth=True)
+def _client(require_auth: bool = True):
+    return create_exchange("Bybit Demo", "swap", require_auth=require_auth)
+
+def _is_transient_connection_error(exc: Exception) -> bool:
+    if isinstance(exc, (ccxt.NetworkError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout,
+                        ccxt.DDoSProtection, ConnectionError, TimeoutError, OSError)):
+        return True
+    message = str(exc).lower()
+    return any(marker in message for marker in (
+        "winerror 10054", "connection reset", "connection aborted", "connection refused",
+        "remote end closed", "read timed out", "max retries exceeded",
+        "temporarily unavailable"))
+
+def _read_with_retry(operation: Callable[[Any], Any], *, authenticated: bool = True):
+    """Retry idempotent reads only, with fresh clients and bounded exponential backoff."""
+    last_error = None
+    for attempt in range(READ_RETRY_ATTEMPTS):
+        ex = None
+        try:
+            ex = _client(require_auth=authenticated)
+            ex.timeout = 30000
+            return operation(ex)
+        except Exception as exc:
+            last_error = exc
+            if attempt == READ_RETRY_ATTEMPTS - 1 or not _is_transient_connection_error(exc):
+                raise
+            time.sleep(READ_RETRY_BASE_DELAY * (2 ** attempt))
+        finally:
+            if ex is not None:
+                try: ex.close()
+                except Exception: pass
+    raise last_error
 
 
 def account_snapshot() -> dict:
-    ex = _client()
-    try:
+    def read(ex):
         balance = ex.fetch_balance()
         usdt = balance.get("USDT") or {}
         return {"environment": "BYBIT_DEMO", "market_type": "swap",
                 "authenticated": True, "usdt": {
                     "free": usdt.get("free"), "used": usdt.get("used"),
                     "total": usdt.get("total")}}
-    finally:
-        ex.close()
+    return _read_with_retry(read)
 
 
 def supported_symbols() -> list[str]:
-    ex = create_exchange("Bybit Demo", "swap", require_auth=False)
-    try:
+    def read(ex):
         ex.load_markets()
         return sorted(s for s, m in ex.markets.items()
                       if m.get("swap") and m.get("linear") and m.get("settle") == "USDT"
                       and m.get("active", True))
-    finally:
-        ex.close()
+    return _read_with_retry(read, authenticated=False)
 
 
 def positions() -> list[dict]:
-    ex = _client()
-    try:
+    def read(ex):
         ex.load_markets()
         result = []
         for p in ex.fetch_positions():
@@ -47,7 +76,6 @@ def positions() -> list[dict]:
             info = p.get("info") or {}
             def first_value(*values):
                 return next((value for value in values if value not in (None, "")), None)
-
             result.append({
                 "id": str(info.get("positionIdx", p.get("id") or "")),
                 "symbol": p.get("symbol"), "side": (p.get("side") or "").upper(),
@@ -64,24 +92,15 @@ def positions() -> list[dict]:
                 "position_idx": int(info.get("positionIdx") or 0),
                 "exchange": "Bybit Demo", "mode": "BYBIT_DEMO"})
         return result
-    finally:
-        ex.close()
+    return _read_with_retry(read)
 
 
 def open_orders(limit: int = 100) -> list[dict]:
-    ex = _client()
-    try:
-        return ex.fetch_open_orders(None, limit=limit)
-    finally:
-        ex.close()
+    return _read_with_retry(lambda ex: ex.fetch_open_orders(None, limit=limit))
 
 
 def recent_trades(limit: int = 50) -> list[dict]:
-    ex = _client()
-    try:
-        return ex.fetch_my_trades(None, limit=limit)
-    finally:
-        ex.close()
+    return _read_with_retry(lambda ex: ex.fetch_my_trades(None, limit=limit))
 
 
 def place_order(*, symbol: str, side: str, order_type: str, notional: float,
