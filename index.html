@@ -190,7 +190,7 @@
                 </div>
 
                 <div class="panel">
-                    <div class="panel-title">Quick Trade</div>
+                    <div class="panel-title">Quick Trade — Local Paper Simulation</div>
                     <div class="quick-trade-tabs">
                         <button class="qt-btn active-long" id="longBtn" onclick="setSide('Long')">Long</button>
                         <button class="qt-btn" id="shortBtn" onclick="setSide('Short')">Short</button>
@@ -207,7 +207,7 @@
         </div>
 
         <div class="panel">
-            <div class="panel-title">Open Paper Positions <span style="font-size:10px;color:var(--text-secondary);">Local simulation only</span></div>
+            <div class="panel-title">Open Paper Positions <span style="font-size:10px;color:var(--text-secondary);">Local simulation only — not Bybit Demo positions</span></div>
             <div style="overflow-x:auto;"><table>
                 <thead><tr><th>Pair / Side</th><th>Entry</th><th>Current</th><th>Leverage</th><th>Margin</th><th>Unrealized P&amp;L</th><th>Stop Loss</th><th>Take Profit</th><th>Action</th></tr></thead>
                 <tbody id="openPositionsTable"><tr><td colspan="9">Loading open positions...</td></tr></tbody>
@@ -216,12 +216,12 @@
 
         <!-- Strategy Modules Grid -->
         <div class="panel">
-            <div class="panel-title">Active Strategy Modules <span style="font-size: 11px; color: var(--accent-green);">4/4 Active</span></div>
+            <div class="panel-title">Active Strategy Modules <span style="font-size: 11px; color: var(--text-secondary);">2 scanner-supported / 2 awaiting providers</span></div>
             <div class="strategies-grid">
-                <div class="strategy-card"><h5>Strategy I</h5><p>Trend & Momentum</p><span class="badge">Active</span></div>
-                <div class="strategy-card"><h5>Strategy II</h5><p>Marubozu Pattern</p><span class="badge">Active</span></div>
-                <div class="strategy-card"><h5>Strategy III</h5><p>VWAP Breakouts</p><span class="badge">Active</span></div>
-                <div class="strategy-card"><h5>Strategy IV</h5><p>B2B Trade</p><span class="badge">Active</span></div>
+                <div class="strategy-card"><h5>Strategy Bot</h5><p>SMA 20/200 + Stochastic confirmation</p><span class="badge">Scanner-supported</span></div>
+                <div class="strategy-card"><h5>Strategy II</h5><p>Marubozu candle pattern</p><span class="badge">Scanner-supported</span></div>
+                <div class="strategy-card"><h5>Strategy III</h5><p>VWAP + CVD confirmation</p><span class="badge" style="background:#3b2b14;color:#e0b15a;">Provider pending</span></div>
+                <div class="strategy-card"><h5>Strategy IV</h5><p>20-candle low + open interest</p><span class="badge" style="background:#3b2b14;color:#e0b15a;">Provider pending</span></div>
             </div>
         </div>
 
@@ -241,8 +241,7 @@
                 <table>
                     <thead><tr><th>Time</th><th>Pair</th><th>Type</th><th>Price</th><th>P&L</th></tr></thead>
                     <tbody id="recentTradesTable">
-                        <tr><td>13:45</td><td>BTC/USDT</td><td style="color: var(--accent-green);">Long</td><td>68,045.7</td><td style="color: var(--accent-green);">+42.30</td></tr>
-                        <tr><td>11:20</td><td>ETH/USDT</td><td style="color: var(--accent-red);">Short</td><td>3,248.12</td><td style="color: var(--accent-green);">+18.20</td></tr>
+                        <tr><td colspan="5">No verified trades loaded yet</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -250,9 +249,7 @@
             <div class="panel">
                 <div class="panel-title">News & Macro Events</div>
                 <div id="newsContainer">
-                    <div class="news-item"><span style="width: 75%;">Bitcoin holds $68K as ETF inflows continue</span><span class="news-source">B</span></div>
-                    <div class="news-item"><span style="width: 75%;">Fed keeps rates steady, signals cautious approach</span><span class="news-source">CNBC</span></div>
-                    <div class="news-item"><span style="width: 75%;">Major exchange announces new trading pairs</span><span class="news-source">⚡</span></div>
+                    <div class="news-item"><span>News provider not connected. No headlines are being displayed.</span></div>
                 </div>
             </div>
         </div>
