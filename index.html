@@ -464,11 +464,12 @@
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.detail || 'Could not load open positions');
                 const rows = data.positions || [];
+                document.getElementById('openPos').innerText = rows.length + ' Demo';
                 body.innerHTML = rows.length ? rows.map(p => {
                     const pnl = p.unrealized_pnl == null ? 'N/A' : Number(p.unrealized_pnl).toFixed(4);
                     const pnlColor = p.unrealized_pnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
                     return `<tr><td>${p.symbol}<br>${p.side}</td><td>${Number(p.entry_price).toFixed(4)}</td><td>${p.mark_price == null ? '—' : Number(p.mark_price).toFixed(4)}</td><td>${p.leverage == null ? '—' : Number(p.leverage).toFixed(1) + 'x'}</td><td>—</td><td style="color:${pnlColor}">${pnl}</td><td>${p.stop_loss == null ? '—' : Number(p.stop_loss).toFixed(4)}</td><td>${p.take_profit == null ? '—' : Number(p.take_profit).toFixed(4)}</td><td><button class="ex-btn" onclick="closeBybitDemoPosition('${encodeURIComponent(p.symbol)}','${p.side}',${p.contracts},${p.position_idx})">Close</button></td></tr>`;
-                }).join('') : '<tr><td colspan="9">No open paper positions</td></tr>';
+                }).join('') : '<tr><td colspan="9">No open Bybit Demo positions</td></tr>';
             } catch (err) {
                 body.innerHTML = `<tr><td colspan="9">Unable to load positions: ${String(err.message || err)}</td></tr>`;
             }
