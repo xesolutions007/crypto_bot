@@ -1,7 +1,6 @@
-"""FastAPI backend for the local paper-trading dashboard.
+"""FastAPI backend for local paper trading and explicitly enabled Bybit Demo Futures.
 
-Safety: this application does not submit exchange orders. Exchange credentials are
-read locally for account verification only. All trade entries are written to SQLite.
+Live trading is hard-disabled in config.py. Exchange credentials remain local.
 """
 from __future__ import annotations
 
@@ -516,8 +515,15 @@ def _execute_bybit_demo_signal(signal_row: dict) -> dict:
         market = ex.market(symbol)
         if not market.get("swap") or market.get("quote") != "USDT":
             raise RuntimeError("Only USDT-settled Bybit perpetual markets are allowed.")
+        # Scanner orders use the same Hedge Mode mapping as manual Demo orders.
         try:
-            ex.set_leverage(LEVERAGE, symbol)
+            ex.set_position_mode(True, symbol)
+        except Exception as mode_exc:
+            message = str(mode_exc).lower()
+            if "110025" not in message and "not modified" not in message:
+                raise RuntimeError("Could not confirm Bybit Hedge Mode for scanner order: " + str(mode_exc)[:140])
+        try:
+            ex.set_leverage(min(7, int(LEVERAGE)), symbol)
         except Exception as leverage_exc:
             message = str(leverage_exc).lower()
             if "110043" not in message and "not modified" not in message:
@@ -528,7 +534,7 @@ def _execute_bybit_demo_signal(signal_row: dict) -> dict:
         if amount <= 0 or amount * contract_size * entry > BYBIT_DEMO_ORDER_NOTIONAL_USDT * 1.02:
             raise RuntimeError("Calculated order quantity is invalid or exceeds the configured notional cap.")
         params = {
-            "positionIdx": 0, "tpslMode": "Full",
+            "positionIdx": 1 if side == "LONG" else 2, "tpslMode": "Full",
             "stopLoss": ex.price_to_precision(symbol, stop),
             "takeProfit": ex.price_to_precision(symbol, target),
             "slTriggerBy": "MarkPrice", "tpTriggerBy": "MarkPrice",
@@ -538,7 +544,7 @@ def _execute_bybit_demo_signal(signal_row: dict) -> dict:
             raise RuntimeError("Bybit did not return a confirmed order ID.")
         return {"exchange": "Bybit Demo", "symbol": symbol, "side": side,
                 "order_id": str(order["id"]), "status": order.get("status") or "submitted",
-                "amount": amount, "leverage": LEVERAGE, "reference_price": entry,
+                "amount": amount, "leverage": min(7, int(LEVERAGE)), "position_idx": params["positionIdx"], "reference_price": entry,
                 "stop_loss": stop, "take_profit": target, "mode": "BYBIT_DEMO"}
     finally:
         try: ex.close()
