@@ -173,7 +173,7 @@
             <!-- Left: Live TradingView Candlestick Chart -->
             <div class="panel">
                 <div class="panel-title">
-                    <span>BTC/USDT 15m - Bybit Paper Trading</span>
+                    <span id="chartTitle">BTC/USDT 15m - Bybit Paper Trading</span>
                     <span style="color: var(--accent-green); font-size: 11px;" id="livePriceTicker">Market price unavailable</span>
                 </div>
                 <div id="tradingview_widget"></div>
@@ -358,7 +358,6 @@
             });
             document.getElementById('connectionText').innerText = ex + " selected — checking...";
             await checkExchangeConnection();
-            await checkExchangeConnection();
             await fetchLiveDashboardData();
         }
 
@@ -402,28 +401,35 @@
             }
         }
 
+        let dashboardRefreshInFlight = false;
+        let lastPositionRender = '';
+        let lastDemoTradesRender = '';
+        let lastPaperMetricsRender = '';
+
         async function fetchLiveDashboardData() {
+            if (dashboardRefreshInFlight) return;
+            dashboardRefreshInFlight = true;
             try {
-                const res = await fetch('/api/dashboard-data');
+                const res = await fetch('/api/dashboard-data', {cache:'no-store'});
+                if (!res.ok) throw new Error('Paper dashboard request failed: ' + res.status);
                 const data = await res.json();
-                
-                document.getElementById('totalBalance').innerText = Number(data.paper_balance ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2});
-                document.getElementById('todayPnl').innerText = data.today_pnl + " USDT";
-                document.getElementById('openPos').innerText = data.open_positions_count + " Paper";
-                document.getElementById('winRate').innerText = data.win_rate;
-                document.getElementById('drawdown').innerText = data.daily_drawdown;
-                document.getElementById('oiVal').innerText = (data.market_intelligence.open_interest ?? "Unavailable");
-                document.getElementById('livePriceTicker').innerText = `Price: ${data.current_price ?? 'Unavailable'} (${data.price_change ?? 'N/A'}%)`;
-                document.querySelector('.panel-title span').innerText = `${data.active_symbol} ${data.market_type} — ${data.active_exchange}`;
-                const rows = data.recent_trades || [];
-                document.getElementById('recentTradesTable').innerHTML = rows.length ? rows.map(t => `<tr><td>${new Date(t.time).toLocaleString()}</td><td>${t.pair}</td><td>${t.type}</td><td>${Number(t.price).toFixed(4)}</td><td>${t.pnl == null ? t.status : Number(t.pnl).toFixed(2)}</td></tr>`).join('') : '<tr><td colspan="5">No paper trades recorded yet</td></tr>';
-                document.getElementById('totalTrades').innerText = rows.length;
-                document.getElementById('performanceWinRate').innerText = data.win_rate;
-                document.getElementById('totalPnl').innerText = `${data.today_pnl} USDT`;
-                await fetchOpenPositions();
-                await fetchBybitDemoAccountAndTrades();
+                const paperMetrics = JSON.stringify([data.paper_balance, data.today_pnl, data.open_positions_count, data.win_rate, data.daily_drawdown]);
+                if (paperMetrics !== lastPaperMetricsRender) {
+                    document.getElementById('totalBalance').innerText = Number(data.paper_balance ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2});
+                    document.getElementById('todayPnl').innerText = data.today_pnl + " USDT";
+                    document.getElementById('winRate').innerText = data.win_rate;
+                    document.getElementById('drawdown').innerText = data.daily_drawdown;
+                    document.getElementById('oiVal').innerText = (data.market_intelligence.open_interest ?? "Unavailable");
+                    document.getElementById('livePriceTicker').innerText = `Price: ${data.current_price ?? 'Unavailable'} (${data.price_change ?? 'N/A'}%)`;
+                    const chartTitle = document.getElementById('chartTitle');
+                    if (chartTitle) chartTitle.innerText = `${data.active_symbol} ${data.market_type} — ${data.active_exchange}`;
+                    lastPaperMetricsRender = paperMetrics;
+                }
+                await Promise.all([fetchOpenPositions(), fetchBybitDemoAccountAndTrades()]);
             } catch(e) {
-                console.error("Sync error:", e);
+                console.error("Dashboard sync error:", e);
+            } finally {
+                dashboardRefreshInFlight = false;
             }
         }
 
@@ -443,17 +449,21 @@
                 balanceEl.innerText = usdt.total == null ? '—' : Number(usdt.total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:4});
                 labelEl.innerText = 'Available: ' + (usdt.free == null ? '—' : Number(usdt.free).toFixed(4)) + ' USDT · Bybit Demo';
                 const trades = tradeData.trades || [];
-                document.getElementById('recentTradesTable').innerHTML = trades.length ? trades.map(t => {
-                    const time = t.timestamp ? new Date(t.timestamp).toLocaleString() : '—';
-                    const price = t.price == null ? '—' : Number(t.price).toFixed(6);
-                    const pnl = t.info && t.info.closedPnl != null ? Number(t.info.closedPnl).toFixed(4) : '—';
-                    return '<tr><td>'+time+'</td><td>'+(t.symbol || '—')+'</td><td>'+(t.side || '—').toUpperCase()+'</td><td>'+price+'</td><td>'+pnl+'</td></tr>';
-                }).join('') : '<tr><td colspan="5">No Bybit Demo executions returned</td></tr>';
+                const signature = JSON.stringify(trades.map(t => [t.id,t.timestamp,t.symbol,t.side,t.price,t.amount,t.info && t.info.closedPnl]));
+                if (signature !== lastDemoTradesRender) {
+                    document.getElementById('recentTradesTable').innerHTML = trades.length ? trades.map(t => {
+                        const time = t.timestamp ? new Date(t.timestamp).toLocaleString() : '—';
+                        const price = t.price == null ? '—' : Number(t.price).toFixed(6);
+                        const pnl = t.info && t.info.closedPnl != null ? Number(t.info.closedPnl).toFixed(4) : '—';
+                        return '<tr><td>'+time+'</td><td>'+(t.symbol || '—')+'</td><td>'+(t.side || '—').toUpperCase()+'</td><td>'+price+'</td><td>'+pnl+'</td></tr>';
+                    }).join('') : '<tr><td colspan="5">No Bybit Demo executions returned</td></tr>';
+                    lastDemoTradesRender = signature;
+                }
                 document.getElementById('totalTrades').innerText = trades.length + ' Demo executions';
             } catch (err) {
-                balanceEl.innerText = '—';
-                labelEl.innerText = 'Bybit Demo: ' + String(err.message || err);
-                document.getElementById('recentTradesTable').innerHTML = '<tr><td colspan="5">Bybit Demo trade history unavailable</td></tr>';
+                // Keep the last successful values during a transient exchange/network error.
+                labelEl.innerText = 'Demo data temporarily unavailable — retaining last update';
+                console.warn('Bybit Demo refresh:', err);
             }
         }
 
@@ -465,13 +475,18 @@
                 if (!res.ok) throw new Error(data.detail || 'Could not load open positions');
                 const rows = data.positions || [];
                 document.getElementById('openPos').innerText = rows.length + ' Demo';
+                const signature = JSON.stringify(rows);
+                if (signature === lastPositionRender) return;
                 body.innerHTML = rows.length ? rows.map(p => {
                     const pnl = p.unrealized_pnl == null ? 'N/A' : Number(p.unrealized_pnl).toFixed(4);
-                    const pnlColor = p.unrealized_pnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
-                    return `<tr><td>${p.symbol}<br>${p.side}</td><td>${Number(p.entry_price).toFixed(4)}</td><td>${p.mark_price == null ? '—' : Number(p.mark_price).toFixed(4)}</td><td>${p.leverage == null ? '—' : Number(p.leverage).toFixed(1) + 'x'}</td><td>—</td><td style="color:${pnlColor}">${pnl}</td><td>${p.stop_loss == null ? '—' : Number(p.stop_loss).toFixed(4)}</td><td>${p.take_profit == null ? '—' : Number(p.take_profit).toFixed(4)}</td><td><button class="ex-btn" onclick="closeBybitDemoPosition('${encodeURIComponent(p.symbol)}','${p.side}',${p.contracts},${p.position_idx})">Close</button></td></tr>`;
+                    const pnlColor = p.unrealized_pnl == null ? 'var(--text-secondary)' : (Number(p.unrealized_pnl) >= 0 ? 'var(--accent-green)' : 'var(--accent-red)');
+                    const margin = p.position_margin == null ? '—' : Number(p.position_margin).toFixed(4) + ' USDT';
+                    return `<tr><td>${p.symbol}<br>${p.side}</td><td>${p.entry_price == null ? '—' : Number(p.entry_price).toFixed(4)}</td><td>${p.mark_price == null ? '—' : Number(p.mark_price).toFixed(4)}</td><td>${p.leverage == null ? '—' : Number(p.leverage).toFixed(1) + 'x'}</td><td>${margin}</td><td style="color:${pnlColor}">${pnl}</td><td>${p.stop_loss == null || Number(p.stop_loss) === 0 ? '—' : Number(p.stop_loss).toFixed(4)}</td><td>${p.take_profit == null || Number(p.take_profit) === 0 ? '—' : Number(p.take_profit).toFixed(4)}</td><td><button class="ex-btn" onclick="closeBybitDemoPosition('${encodeURIComponent(p.symbol)}','${p.side}',${p.contracts},${p.position_idx})">Close</button></td></tr>`;
                 }).join('') : '<tr><td colspan="9">No open Bybit Demo positions</td></tr>';
+                lastPositionRender = signature;
             } catch (err) {
-                body.innerHTML = `<tr><td colspan="9">Unable to load positions: ${String(err.message || err)}</td></tr>`;
+                // Do not clear valid positions on a brief API failure.
+                console.warn('Bybit Demo positions refresh:', err);
             }
         }
 
@@ -501,7 +516,7 @@
         }
 
         // Poll live updates every 3 seconds
-        setInterval(fetchLiveDashboardData, 3000);
+        setInterval(fetchLiveDashboardData, 10000);
         loadFuturesSymbols();
         fetchLiveDashboardData();
         checkExchangeConnection();
