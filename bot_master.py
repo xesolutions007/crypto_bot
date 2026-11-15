@@ -23,6 +23,7 @@ from config import (
 )
 import paper_trading
 from exchange_manager import create_exchange, connection_check, SUPPORTED_EXCHANGES
+import bybit_demo
 from news_filter import NewsSentimentFilter
 from strategies import StrategyModules
 
@@ -47,6 +48,27 @@ class CapitalUpdate(BaseModel):
 class ExchangeSwitch(BaseModel):
     exchange: str
     market_type: Literal["spot", "swap"] = "swap"
+
+
+class DemoOrderRequest(BaseModel):
+    market_type: Literal["spot", "swap"] = "swap"
+    symbol: str = Field(min_length=3, max_length=40)
+    side: Literal["BUY", "SELL"]
+    order_type: Literal["market", "limit", "stop-limit"] = "market"
+    size_usdt: float = Field(gt=0, le=100000)
+    leverage: int = Field(default=7, ge=1, le=7)
+    price: Optional[float] = Field(default=None, gt=0)
+    trigger_price: Optional[float] = Field(default=None, gt=0)
+    stop_loss: Optional[float] = Field(default=None, gt=0)
+    take_profit: Optional[float] = Field(default=None, gt=0)
+    position_side: Optional[Literal["LONG", "SHORT"]] = None
+
+
+class DemoCloseRequest(BaseModel):
+    symbol: str
+    side: Literal["LONG", "SHORT"]
+    contracts: float = Field(gt=0)
+    position_idx: int = Field(ge=0, le=2)
 
 
 class PaperTradeRequest(BaseModel):
@@ -381,6 +403,75 @@ def get_paper_trades(status: Optional[str] = None, limit: int = 100):
         return {"trades": paper_trading.list_trades(status=status, limit=limit)}
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+
+
+@app.get("/api/bybit-demo/account")
+def bybit_demo_account(market_type: Literal["spot", "swap"] = "swap"):
+    try:
+        return bybit_demo.account_snapshot(market_type)
+    except Exception as exc:
+        raise HTTPException(502, f"Bybit Demo account check failed: {type(exc).__name__}: {str(exc)[:180]}")
+
+
+@app.get("/api/bybit-demo/positions")
+def bybit_demo_positions():
+    try:
+        rows = bybit_demo.positions()
+        return {"environment": "BYBIT_DEMO", "positions": rows, "count": len(rows)}
+    except Exception as exc:
+        raise HTTPException(502, f"Could not fetch Bybit Demo positions: {type(exc).__name__}: {str(exc)[:180]}")
+
+
+@app.get("/api/bybit-demo/orders")
+def bybit_demo_orders(market_type: Literal["spot", "swap"] = "swap"):
+    try:
+        rows = bybit_demo.open_orders(market_type)
+        return {"environment": "BYBIT_DEMO", "orders": rows, "count": len(rows)}
+    except Exception as exc:
+        raise HTTPException(502, f"Could not fetch Bybit Demo open orders: {type(exc).__name__}: {str(exc)[:180]}")
+
+
+@app.get("/api/bybit-demo/trades")
+def bybit_demo_trades(market_type: Literal["spot", "swap"] = "swap", limit: int = 50):
+    try:
+        rows = bybit_demo.recent_trades(market_type, max(1, min(limit, 100)))
+        return {"environment": "BYBIT_DEMO", "trades": rows, "count": len(rows)}
+    except Exception as exc:
+        raise HTTPException(502, f"Could not fetch Bybit Demo trade history: {type(exc).__name__}: {str(exc)[:180]}")
+
+
+@app.post("/api/bybit-demo/order")
+def place_bybit_demo_order(data: DemoOrderRequest):
+    if LIVE_TRADING_ENABLED:
+        raise HTTPException(403, "Safety lock: live trading is disabled.")
+    if data.market_type == "swap" and data.position_side is None:
+        raise HTTPException(400, "Choose LONG or SHORT explicitly for separate Futures positions.")
+    if data.market_type == "spot" and (data.stop_loss is not None or data.take_profit is not None):
+        # Spot conditional protection support varies by account/API; require Futures for attached position SL/TP.
+        raise HTTPException(400, "Attached position Stop Loss/Take Profit is currently supported for Futures only.")
+    try:
+        result = bybit_demo.place_order(
+            market_type=data.market_type, symbol=data.symbol, side=data.side,
+            order_type=data.order_type, notional=data.size_usdt, leverage=data.leverage,
+            price=data.price, trigger_price=data.trigger_price,
+            stop_loss=data.stop_loss, take_profit=data.take_profit,
+            position_side=data.position_side)
+        return {"status": "submitted_to_bybit_demo", "order": result,
+                "note": "Check order status and resulting position in Bybit Demo. Submitted does not mean filled."}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        raise HTTPException(502, f"Bybit Demo order failed: {type(exc).__name__}: {str(exc)[:180]}")
+
+
+@app.post("/api/bybit-demo/close-position")
+def close_bybit_demo_position(data: DemoCloseRequest):
+    try:
+        return bybit_demo.close_position(data.symbol, data.side, data.contracts, data.position_idx)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        raise HTTPException(502, f"Bybit Demo close failed: {type(exc).__name__}: {str(exc)[:180]}")
 
 
 @app.get("/api/strategies")
