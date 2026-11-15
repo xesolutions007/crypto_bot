@@ -137,14 +137,14 @@
         <!-- Metrics Overview Bar -->
         <div class="metrics-grid">
             <div class="metric-card">
-                <h4>Total Balance (USDT)</h4>
+                <h4>Paper Account Equity (USDT)</h4>
                 <div class="value" id="totalBalance">—</div>
-                <div class="sub">Local paper account — simulation only</div>
+                <div class="sub">Local simulation only — not Bybit balance</div>
             </div>
             <div class="metric-card">
-                <h4>Bybit Demo Available (USDT)</h4>
+                <h4>Bybit Demo Total (USDT)</h4>
                 <div class="value" id="exchangeBalance">—</div>
-                <div class="sub" id="exchangeBalanceLabel">API balance not checked</div>
+                <div class="sub" id="exchangeBalanceLabel">Demo API balance not loaded</div>
             </div>
             <div class="metric-card">
                 <h4>Total P&L (Today)</h4>
@@ -154,7 +154,7 @@
             <div class="metric-card">
                 <h4>Open Positions</h4>
                 <div class="value" id="openPos">0 Paper</div>
-                <div class="sub">Local simulated positions</div>
+                <div class="sub">Bybit Demo USDT perpetual positions</div>
             </div>
             <div class="metric-card">
                 <h4>Win Rate</h4>
@@ -421,8 +421,39 @@
                 document.getElementById('performanceWinRate').innerText = data.win_rate;
                 document.getElementById('totalPnl').innerText = `${data.today_pnl} USDT`;
                 await fetchOpenPositions();
+                await fetchBybitDemoAccountAndTrades();
             } catch(e) {
                 console.error("Sync error:", e);
+            }
+        }
+
+        async function fetchBybitDemoAccountAndTrades() {
+            const balanceEl = document.getElementById('exchangeBalance');
+            const labelEl = document.getElementById('exchangeBalanceLabel');
+            try {
+                const [accountRes, tradesRes] = await Promise.all([
+                    fetch('/api/bybit-demo/account', {cache:'no-store'}),
+                    fetch('/api/bybit-demo/trades?limit=20', {cache:'no-store'})
+                ]);
+                const account = await accountRes.json();
+                const tradeData = await tradesRes.json();
+                if (!accountRes.ok) throw new Error(account.detail || 'Demo account unavailable');
+                if (!tradesRes.ok) throw new Error(tradeData.detail || 'Demo trade history unavailable');
+                const usdt = account.usdt || {};
+                balanceEl.innerText = usdt.total == null ? '—' : Number(usdt.total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:4});
+                labelEl.innerText = 'Available: ' + (usdt.free == null ? '—' : Number(usdt.free).toFixed(4)) + ' USDT · Bybit Demo';
+                const trades = tradeData.trades || [];
+                document.getElementById('recentTradesTable').innerHTML = trades.length ? trades.map(t => {
+                    const time = t.timestamp ? new Date(t.timestamp).toLocaleString() : '—';
+                    const price = t.price == null ? '—' : Number(t.price).toFixed(6);
+                    const pnl = t.info && t.info.closedPnl != null ? Number(t.info.closedPnl).toFixed(4) : '—';
+                    return '<tr><td>'+time+'</td><td>'+(t.symbol || '—')+'</td><td>'+(t.side || '—').toUpperCase()+'</td><td>'+price+'</td><td>'+pnl+'</td></tr>';
+                }).join('') : '<tr><td colspan="5">No Bybit Demo executions returned</td></tr>';
+                document.getElementById('totalTrades').innerText = trades.length + ' Demo executions';
+            } catch (err) {
+                balanceEl.innerText = '—';
+                labelEl.innerText = 'Bybit Demo: ' + String(err.message || err);
+                document.getElementById('recentTradesTable').innerHTML = '<tr><td colspan="5">Bybit Demo trade history unavailable</td></tr>';
             }
         }
 
