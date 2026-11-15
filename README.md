@@ -65,7 +65,7 @@ Important local settings in `.env`:
 |---|---:|---|
 | `DEFAULT_EXCHANGE` | `Bybit Demo` | Initial exchange |
 | `DEFAULT_SYMBOL` | `BTC/USDT:USDT` | Initial market |
-| `ACTIVE_PAIRS` | BTC, ETH, SOL USDT swaps | Scanner watchlist |
+| `ACTIVE_PAIRS` | blank | Scans all active Bybit USDT linear perpetuals; set a list only to restrict it |
 | `PAPER_CAPITAL_USDT` | `200` | Initial local paper capital |
 | `FUTURES_LEVERAGE` | `7` | Default simulated leverage |
 | `TARGET_RR` | `5.0` | Default target risk/reward ratio when a stop is supplied |
@@ -84,7 +84,7 @@ The paper ledger applies configurable-in-code fee and slippage assumptions. Esti
 - Manual local paper trades using a fetched exchange ticker price.
 - Background paper-position monitoring for stop-loss, take-profit, break-even and estimated liquidation events.
 - Funding settlement simulation when the exchange provides usable funding data.
-- Read-only scheduled scanner for Strategy Modules I and II; signals are reported, never automatically traded.
+- Scheduled scanner for all active Bybit USDT-settled linear perpetual pairs when `ACTIVE_PAIRS` is blank. Strategy Modules I and II can submit protected Bybit Demo orders when opted in.
 - Dashboard API uses unavailable values when a real data provider is not configured.
 
 ## Strategy module status
@@ -140,14 +140,14 @@ Dashboard: [https://botstrategiesmodules:8000/](https://botstrategiesmodules:800
 
 ## Optional Bybit Demo order execution (advanced — opt-in)
 
-The scanner can optionally submit real test orders to the **Bybit Demo** environment for Strategy I and II signals. This is separate from the local SQLite paper ledger.
+The scanner submits test orders to the **Bybit Demo** environment for eligible Strategy I and II signals when auto-execution is enabled. This is separate from the local SQLite paper ledger.
 
 Safety defaults:
-- `BYBIT_DEMO_AUTO_EXECUTION=false` (disabled unless explicitly changed locally).
+- `BYBIT_DEMO_AUTO_EXECUTION=true` in the refreshed example configuration; existing local `.env` files are not overwritten and must be changed manually.
 - `LIVE_TRADING_ENABLED` remains hard-coded false.
 - Execution code accepts only the Bybit Demo connection and USDT-settled perpetual swap markets.
 - Each entry is a market order with attached exchange-side stop-loss and take-profit triggers. Take-profit is calculated using `TARGET_RR` (default 5R).
-- Demo order notional defaults to 25 USDT and is capped at 100 USDT per order.
+- Each automatic order is limited to 3 USDT notional. Combined open Demo position notional is capped at 250 USDT.
 - Signals without a valid stop-loss are blocked.
 - A Demo API key with derivatives order/trade permission is required. Read-only keys can check balance but cannot place orders.
 
@@ -156,7 +156,9 @@ To opt in, create a **Bybit Demo API key** in Bybit Demo (not a live API key). E
 ```dotenv
 BYBIT_ENVIRONMENT=demo
 BYBIT_DEMO_AUTO_EXECUTION=true
-BYBIT_DEMO_ORDER_NOTIONAL_USDT=25
+BYBIT_DEMO_ORDER_NOTIONAL_USDT=3
+BYBIT_DEMO_TOTAL_BUDGET_USDT=250
+ACTIVE_PAIRS=
 BYBIT_API_KEY=your_demo_key
 BYBIT_API_SECRET=your_demo_secret
 ```
