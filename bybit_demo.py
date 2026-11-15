@@ -45,13 +45,22 @@ def positions() -> list[dict]:
             if contracts <= 0:
                 continue
             info = p.get("info") or {}
+            def first_value(*values):
+                return next((value for value in values if value not in (None, "")), None)
+
             result.append({
                 "id": str(info.get("positionIdx", p.get("id") or "")),
                 "symbol": p.get("symbol"), "side": (p.get("side") or "").upper(),
                 "contracts": contracts, "entry_price": p.get("entryPrice"),
                 "mark_price": p.get("markPrice"), "unrealized_pnl": p.get("unrealizedPnl"),
-                "leverage": p.get("leverage"), "stop_loss": p.get("stopLoss"),
-                "take_profit": p.get("takeProfit"),
+                "leverage": first_value(p.get("leverage"), info.get("leverage")),
+                "position_margin": first_value(p.get("initialMargin"), p.get("initialMarginValue"),
+                                               info.get("positionIM"), info.get("positionBalance")),
+                "maintenance_margin": first_value(p.get("maintenanceMargin"), info.get("positionMM")),
+                "liquidation_price": first_value(p.get("liquidationPrice"), info.get("liqPrice")),
+                "margin_mode": first_value(p.get("marginMode"), info.get("tradeMode")),
+                "stop_loss": first_value(p.get("stopLoss"), info.get("stopLoss")),
+                "take_profit": first_value(p.get("takeProfit"), info.get("takeProfit")),
                 "position_idx": int(info.get("positionIdx") or 0),
                 "exchange": "Bybit Demo", "mode": "BYBIT_DEMO"})
         return result
