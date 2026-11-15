@@ -524,8 +524,8 @@ def _execute_bybit_demo_signal(signal_row: dict) -> dict:
             raise RuntimeError("Calculated order quantity is invalid or exceeds the configured notional cap.")
         params = {
             "positionIdx": 0, "tpslMode": "Full",
-            "stopLoss": {"triggerPrice": ex.price_to_precision(symbol, stop)},
-            "takeProfit": {"triggerPrice": ex.price_to_precision(symbol, target)},
+            "stopLoss": ex.price_to_precision(symbol, stop),
+            "takeProfit": ex.price_to_precision(symbol, target),
             "slTriggerBy": "MarkPrice", "tpTriggerBy": "MarkPrice",
         }
         order = ex.create_order(symbol, "market", "buy" if side == "LONG" else "sell", amount, None, params)
