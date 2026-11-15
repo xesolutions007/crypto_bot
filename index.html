@@ -201,7 +201,7 @@
                         <div class="form-group"><label>Limit Price</label><input type="number" class="form-control" step="any" placeholder="Required for Limit / Stop-Limit" id="tradeLimitPrice"></div><div class="form-group"><label>Trigger Price (Stop-Limit)</label><input type="number" class="form-control" step="any" placeholder="Required for Stop-Limit" id="tradeTriggerPrice"></div><div class="form-group"><label>Stop Loss Price</label><input type="number" class="form-control" step="any" placeholder="Optional stop-loss" id="tradeStopLoss"></div>
                         <div class="form-group" style="grid-column: 1 / -1;"><label>Take Profit Price</label><input type="number" class="form-control" step="any" placeholder="Optional take-profit" id="tradeTakeProfit"></div>
                     </div>
-                    <button class="btn-execute" onclick="executeQuickTrade()">Place Bybit Demo Order</button><div style="font-size:10px;color:var(--text-secondary);margin-top:6px;">Futures Long/Short uses Hedge Mode position indices. Spot Buy/Sell is not leveraged. Order submission is not a fill confirmation.</div>
+                    <button class="btn-execute" onclick="executeQuickTrade()">Place Bybit Demo Order</button><div style="font-size:10px;color:var(--text-secondary);margin-top:6px;">USDT perpetual Futures only. Long and Short are separate Hedge Mode positions. Submission is not fill confirmation.</div>
                 </div>
             </div>
         </div>
@@ -436,11 +436,25 @@
                 body.innerHTML = rows.length ? rows.map(p => {
                     const pnl = p.unrealized_pnl == null ? 'N/A' : Number(p.unrealized_pnl).toFixed(4);
                     const pnlColor = p.unrealized_pnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
-                    return `<tr><td>${p.symbol}<br>${p.side}</td><td>${Number(p.entry_price).toFixed(4)}</td><td>${p.current_price == null ? 'Waiting...' : Number(p.current_price).toFixed(4)}</td><td>${Number(p.leverage).toFixed(1)}x</td><td>${Number(p.margin_used).toFixed(2)}</td><td style="color:${pnlColor}">${pnl}</td><td>${p.stop_loss == null ? '—' : Number(p.stop_loss).toFixed(4)}</td><td>${p.take_profit == null ? '—' : Number(p.take_profit).toFixed(4)}</td><td><button class="ex-btn" onclick="closePaperPosition('${p.id}')">Close</button></td></tr>`;
+                    return `<tr><td>${p.symbol}<br>${p.side}</td><td>${Number(p.entry_price).toFixed(4)}</td><td>${p.mark_price == null ? '—' : Number(p.mark_price).toFixed(4)}</td><td>${p.leverage == null ? '—' : Number(p.leverage).toFixed(1) + 'x'}</td><td>—</td><td style="color:${pnlColor}">${pnl}</td><td>${p.stop_loss == null ? '—' : Number(p.stop_loss).toFixed(4)}</td><td>${p.take_profit == null ? '—' : Number(p.take_profit).toFixed(4)}</td><td><button class="ex-btn" onclick="closeBybitDemoPosition('${encodeURIComponent(p.symbol)}','${p.side}',${p.contracts},${p.position_idx})">Close</button></td></tr>`;
                 }).join('') : '<tr><td colspan="9">No open paper positions</td></tr>';
             } catch (err) {
                 body.innerHTML = `<tr><td colspan="9">Unable to load positions: ${String(err.message || err)}</td></tr>`;
             }
+        }
+
+        async function closeBybitDemoPosition(symbol, side, contracts, positionIdx) {
+            if (!confirm('Submit a reduce-only market close to Bybit Demo for this position?')) return;
+            try {
+                const res = await fetch('/api/bybit-demo/close-position', {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({symbol: decodeURIComponent(symbol), side, contracts, position_idx: positionIdx})
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Close request failed');
+                alert('Close order submitted to Bybit Demo. Verify the fill in your account.');
+                await fetchOpenPositions();
+            } catch (err) { alert('Could not close Demo position: ' + (err.message || err)); }
         }
 
         async function closePaperPosition(tradeId) {
