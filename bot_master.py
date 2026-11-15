@@ -51,7 +51,6 @@ class ExchangeSwitch(BaseModel):
 
 
 class DemoOrderRequest(BaseModel):
-    market_type: Literal["spot", "swap"] = "swap"
     symbol: str = Field(min_length=3, max_length=40)
     side: Literal["BUY", "SELL"]
     order_type: Literal["market", "limit", "stop-limit"] = "market"
@@ -398,11 +397,20 @@ def get_paper_trades(status: Optional[str] = None, limit: int = 100):
 
 
 @app.get("/api/bybit-demo/account")
-def bybit_demo_account(market_type: Literal["spot", "swap"] = "swap"):
+def bybit_demo_account():
     try:
-        return bybit_demo.account_snapshot(market_type)
+        return bybit_demo.account_snapshot()
     except Exception as exc:
         raise HTTPException(502, f"Bybit Demo account check failed: {type(exc).__name__}: {str(exc)[:180]}")
+
+
+@app.get("/api/bybit-demo/symbols")
+def bybit_demo_symbols():
+    try:
+        rows = bybit_demo.supported_symbols()
+        return {"environment": "BYBIT_DEMO", "market_type": "swap", "symbols": rows, "count": len(rows)}
+    except Exception as exc:
+        raise HTTPException(502, f"Could not load Bybit USDT perpetual symbols: {type(exc).__name__}: {str(exc)[:180]}")
 
 
 @app.get("/api/bybit-demo/positions")
@@ -415,18 +423,18 @@ def bybit_demo_positions():
 
 
 @app.get("/api/bybit-demo/orders")
-def bybit_demo_orders(market_type: Literal["spot", "swap"] = "swap"):
+def bybit_demo_orders():
     try:
-        rows = bybit_demo.open_orders(market_type)
+        rows = bybit_demo.open_orders()
         return {"environment": "BYBIT_DEMO", "orders": rows, "count": len(rows)}
     except Exception as exc:
         raise HTTPException(502, f"Could not fetch Bybit Demo open orders: {type(exc).__name__}: {str(exc)[:180]}")
 
 
 @app.get("/api/bybit-demo/trades")
-def bybit_demo_trades(market_type: Literal["spot", "swap"] = "swap", limit: int = 50):
+def bybit_demo_trades(limit: int = 50):
     try:
-        rows = bybit_demo.recent_trades(market_type, max(1, min(limit, 100)))
+        rows = bybit_demo.recent_trades(max(1, min(limit, 100)))
         return {"environment": "BYBIT_DEMO", "trades": rows, "count": len(rows)}
     except Exception as exc:
         raise HTTPException(502, f"Could not fetch Bybit Demo trade history: {type(exc).__name__}: {str(exc)[:180]}")
@@ -436,14 +444,11 @@ def bybit_demo_trades(market_type: Literal["spot", "swap"] = "swap", limit: int 
 def place_bybit_demo_order(data: DemoOrderRequest):
     if LIVE_TRADING_ENABLED:
         raise HTTPException(403, "Safety lock: live trading is disabled.")
-    if data.market_type == "swap" and data.position_side is None:
+    if data.position_side is None:
         raise HTTPException(400, "Choose LONG or SHORT explicitly for separate Futures positions.")
-    if data.market_type == "spot" and (data.stop_loss is not None or data.take_profit is not None):
-        # Spot conditional protection support varies by account/API; require Futures for attached position SL/TP.
-        raise HTTPException(400, "Attached position Stop Loss/Take Profit is currently supported for Futures only.")
     try:
         result = bybit_demo.place_order(
-            market_type=data.market_type, symbol=data.symbol, side=data.side,
+            symbol=data.symbol, side=data.side,
             order_type=data.order_type, notional=data.size_usdt, leverage=data.leverage,
             price=data.price, trigger_price=data.trigger_price,
             stop_loss=data.stop_loss, take_profit=data.take_profit,
