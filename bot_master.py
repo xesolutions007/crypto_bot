@@ -382,19 +382,11 @@ def close_paper_trade(trade_id: str):
 
 @app.get("/api/open-positions")
 def get_open_positions():
-    positions = paper_trading.list_trades(status="OPEN", limit=1000)
-    result = []
-    for trade in positions:
-        price = latest_position_prices.get(trade["exchange"] + "|" + trade["symbol"])
-        unrealized = None if price is None else (float(price) - trade["entry_price"]) * trade["quantity"] * (1 if trade["side"] == "LONG" else -1)
-        result.append({
-            "id": trade["id"], "exchange": trade["exchange"], "symbol": trade["symbol"],
-            "side": trade["side"], "entry_price": trade["entry_price"], "current_price": price,
-            "leverage": trade["leverage"], "margin_used": trade["margin_used"],
-            "unrealized_pnl": unrealized, "stop_loss": trade["stop_loss"],
-            "take_profit": trade["take_profit"], "opened_at": trade["opened_at"],
-        })
-    return {"positions": result, "count": len(result), "mode": "LOCAL_PAPER_ONLY"}
+    try:
+        positions = bybit_demo.positions()
+        return {"positions": positions, "count": len(positions), "mode": "BYBIT_DEMO"}
+    except Exception as exc:
+        raise HTTPException(502, f"Could not load Bybit Demo positions: {type(exc).__name__}: {str(exc)[:180]}")
 
 
 @app.get("/api/paper-trades")
