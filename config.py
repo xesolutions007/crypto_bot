@@ -14,8 +14,9 @@ except ImportError:
 
 APP_MODE = os.getenv("APP_MODE", "PAPER").strip().upper()
 LIVE_TRADING_ENABLED = False  # Hard safety lock: live orders are never routed.
-BYBIT_DEMO_AUTO_EXECUTION = os.getenv("BYBIT_DEMO_AUTO_EXECUTION", "false").strip().lower() == "true"
-BYBIT_DEMO_ORDER_NOTIONAL_USDT = float(os.getenv("BYBIT_DEMO_ORDER_NOTIONAL_USDT", "25"))
+BYBIT_DEMO_AUTO_EXECUTION = os.getenv("BYBIT_DEMO_AUTO_EXECUTION", "true").strip().lower() == "true"
+BYBIT_DEMO_ORDER_NOTIONAL_USDT = float(os.getenv("BYBIT_DEMO_ORDER_NOTIONAL_USDT", "3"))
+BYBIT_DEMO_TOTAL_BUDGET_USDT = float(os.getenv("BYBIT_DEMO_TOTAL_BUDGET_USDT", "250"))
 BYBIT_ENVIRONMENT = os.getenv("BYBIT_ENVIRONMENT", "demo").strip().lower()
 BYBIT_API_KEY = os.getenv("BYBIT_API_KEY", "")
 BYBIT_API_SECRET = os.getenv("BYBIT_API_SECRET", "")
@@ -26,10 +27,7 @@ PAPER_CAPITAL_USDT = float(os.getenv("PAPER_CAPITAL_USDT", "200"))
 SCAN_TIMEFRAME = os.getenv("SCAN_TIMEFRAME", "15m")
 SCAN_INTERVAL_SECONDS = int(os.getenv("SCAN_INTERVAL_SECONDS", "60"))
 
-ACTIVE_PAIRS = [
-    item.strip() for item in os.getenv(
-        "ACTIVE_PAIRS", "BTC/USDT:USDT,ETH/USDT:USDT,SOL/USDT:USDT"
-    ).split(",") if item.strip()
-]
+# Empty ACTIVE_PAIRS means scan every active Bybit USDT-settled linear perpetual.
+ACTIVE_PAIRS = [item.strip() for item in os.getenv("ACTIVE_PAIRS", "").split(",") if item.strip()]
 DEFAULT_EXCHANGE = os.getenv("DEFAULT_EXCHANGE", "Bybit Demo").strip()
 DEFAULT_SYMBOL = os.getenv("DEFAULT_SYMBOL", "BTC/USDT:USDT").strip()
