@@ -196,7 +196,7 @@
                         <button class="qt-btn" id="shortBtn" onclick="setSide('Short')">Short</button>
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                        <div class="form-group"><label>Market</label><select class="form-control" id="tradeMarket"><option value="swap" selected>USDT Perpetual</option><option value="spot">Spot</option></select></div><div class="form-group"><label>Order Type</label><select class="form-control" id="tradeOrderType"><option value="market">Market</option><option value="limit">Limit</option><option value="stop-limit">Stop-Limit</option></select></div><div class="form-group"><label>Leverage (Futures max 7x)</label><select class="form-control" id="tradeLeverage"><option value="7" selected>7x</option><option value="5">5x</option><option value="3">3x</option><option value="1">1x</option></select></div>
+                        <div class="form-group"><label>Market</label><select class="form-control" id="tradeMarket" disabled><option value="swap" selected>USDT Perpetual Futures (Demo)</option></select></div><div class="form-group"><label>Futures Symbol</label><select class="form-control" id="tradeSymbol"><option value="BTC/USDT:USDT">BTC/USDT:USDT</option></select></div><div class="form-group"><label>Order Type</label><select class="form-control" id="tradeOrderType"><option value="market">Market</option><option value="limit">Limit</option><option value="stop-limit">Stop-Limit</option></select></div><div class="form-group"><label>Leverage (Futures max 7x)</label><select class="form-control" id="tradeLeverage"><option value="7" selected>7x</option><option value="5">5x</option><option value="3">3x</option><option value="1">1x</option></select></div>
                         <div class="form-group"><label>Position Notional (USDT)</label><input type="number" class="form-control" value="100" min="1" id="tradeSize"></div>
                         <div class="form-group"><label>Limit Price</label><input type="number" class="form-control" step="any" placeholder="Required for Limit / Stop-Limit" id="tradeLimitPrice"></div><div class="form-group"><label>Trigger Price (Stop-Limit)</label><input type="number" class="form-control" step="any" placeholder="Required for Stop-Limit" id="tradeTriggerPrice"></div><div class="form-group"><label>Stop Loss Price</label><input type="number" class="form-control" step="any" placeholder="Optional stop-loss" id="tradeStopLoss"></div>
                         <div class="form-group" style="grid-column: 1 / -1;"><label>Take Profit Price</label><input type="number" class="form-control" step="any" placeholder="Optional take-profit" id="tradeTakeProfit"></div>
@@ -363,17 +363,10 @@
         }
 
         async function executeQuickTrade() {
-            const marketType = document.getElementById('tradeMarket').value;
-            const isSpot = marketType === 'spot';
-            if (isSpot && activeSide === 'Short') {
-                alert('Spot does not support opening a leveraged Short position. Choose Futures for Long/Short.');
-                return;
-            }
             const payload = {
-                market_type: marketType,
-                symbol: isSpot ? 'BTC/USDT' : 'BTC/USDT:USDT',
+                symbol: document.getElementById('tradeSymbol').value,
                 side: activeSide === 'Long' ? 'BUY' : 'SELL',
-                position_side: isSpot ? null : activeSide.toUpperCase(),
+                position_side: activeSide.toUpperCase(),
                 order_type: document.getElementById('tradeOrderType').value,
                 size_usdt: Number(document.getElementById('tradeSize').value),
                 leverage: Number(document.getElementById('tradeLeverage').value),
@@ -382,14 +375,31 @@
                 stop_loss: document.getElementById('tradeStopLoss').value ? Number(document.getElementById('tradeStopLoss').value) : null,
                 take_profit: document.getElementById('tradeTakeProfit').value ? Number(document.getElementById('tradeTakeProfit').value) : null
             };
-            if (isSpot) { payload.symbol = 'BTC/USDT'; payload.leverage = 1; payload.stop_loss = null; payload.take_profit = null; }
+            if (!payload.symbol || !payload.size_usdt || payload.size_usdt <= 0) { alert('Select a Futures symbol and enter a valid USDT notional size.'); return; }
+            if (payload.order_type !== 'market' && !payload.price) { alert('Enter a limit price.'); return; }
+            if (payload.order_type === 'stop-limit' && !payload.trigger_price) { alert('Enter a trigger price.'); return; }
             const res = await fetch('/api/bybit-demo/order', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
             });
             const result = await res.json();
             if (!res.ok) { alert(result.detail || 'Bybit Demo order failed.'); return; }
-            alert('Bybit Demo order submitted. Order ID: ' + result.order.order_id + '. Check Bybit Demo order history for its fill status.');
+            alert('Bybit Demo order submitted. Order ID: ' + result.order.order_id + '. Verify its fill in Bybit Demo.');
             await fetchLiveDashboardData();
+        }
+
+        async function loadFuturesSymbols() {
+            const select = document.getElementById('tradeSymbol');
+            if (!select) return;
+            try {
+                const res = await fetch('/api/bybit-demo/symbols', {cache:'no-store'});
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Could not load Futures symbols');
+                select.innerHTML = (data.symbols || []).map(symbol => '<option value="' + symbol + '">' + symbol + '</option>').join('');
+                if ([...select.options].some(o => o.value === 'BTC/USDT:USDT')) select.value = 'BTC/USDT:USDT';
+            } catch (err) {
+                select.innerHTML = '<option value="BTC/USDT:USDT">BTC/USDT:USDT (default)</option>';
+                console.error('Futures symbols:', err);
+            }
         }
 
         async function fetchLiveDashboardData() {
@@ -446,6 +456,7 @@
 
         // Poll live updates every 3 seconds
         setInterval(fetchLiveDashboardData, 3000);
+        loadFuturesSymbols();
         fetchLiveDashboardData();
         checkExchangeConnection();
         refreshScannerStatus();
