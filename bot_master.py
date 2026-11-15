@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 from config import (
     ACTIVE_PAIRS, DEFAULT_EXCHANGE, DEFAULT_SYMBOL, PAPER_CAPITAL_USDT,
     SCAN_TIMEFRAME, SCAN_INTERVAL_SECONDS, LEVERAGE, TARGET_RR, LIVE_TRADING_ENABLED,
-    BYBIT_DEMO_AUTO_EXECUTION, BYBIT_DEMO_ORDER_NOTIONAL_USDT,
+    BYBIT_DEMO_AUTO_EXECUTION, BYBIT_DEMO_ORDER_NOTIONAL_USDT, BYBIT_DEMO_TOTAL_BUDGET_USDT,
 )
 import paper_trading
 from exchange_manager import create_exchange, connection_check, SUPPORTED_EXCHANGES
@@ -497,8 +497,10 @@ def _execute_bybit_demo_signal(signal_row: dict) -> dict:
         raise RuntimeError("Demo auto-execution is disabled by configuration.")
     if current_exchange_name != "Bybit Demo" or market_type != "swap":
         raise RuntimeError("Automatic execution is restricted to Bybit Demo USDT perpetuals.")
-    if BYBIT_DEMO_ORDER_NOTIONAL_USDT <= 0 or BYBIT_DEMO_ORDER_NOTIONAL_USDT > 100:
-        raise RuntimeError("Demo order notional must be greater than 0 and no more than 100 USDT.")
+    if BYBIT_DEMO_ORDER_NOTIONAL_USDT <= 0 or BYBIT_DEMO_ORDER_NOTIONAL_USDT > 3:
+        raise RuntimeError("Automatic Demo order notional must be greater than 0 and no more than 3 USDT.")
+    if BYBIT_DEMO_TOTAL_BUDGET_USDT <= 0:
+        raise RuntimeError("Total Demo trading budget must be greater than zero.")
     symbol = str(signal_row["symbol"])
     side = str(signal_row.get("direction", "")).upper()
     entry = float(signal_row.get("market_price") or 0)
@@ -513,8 +515,22 @@ def _execute_bybit_demo_signal(signal_row: dict) -> dict:
     try:
         ex.load_markets()
         market = ex.market(symbol)
-        if not market.get("swap") or market.get("quote") != "USDT":
-            raise RuntimeError("Only USDT-settled Bybit perpetual markets are allowed.")
+        if not (market.get("swap") and market.get("linear") and market.get("settle") == "USDT"):
+            raise RuntimeError("Only active USDT-settled linear Bybit perpetual markets are allowed.")
+        used_notional = 0.0
+        for position in ex.fetch_positions():
+            contracts = float(position.get("contracts") or 0)
+            if contracts <= 0:
+                continue
+            mark = float(position.get("markPrice") or position.get("entryPrice") or 0)
+            position_market = ex.market(position["symbol"])
+            contract_size_existing = float(position_market.get("contractSize") or 1)
+            used_notional += contracts * contract_size_existing * mark
+        if used_notional + BYBIT_DEMO_ORDER_NOTIONAL_USDT > BYBIT_DEMO_TOTAL_BUDGET_USDT:
+            raise RuntimeError(
+                f"Demo budget reached: existing position notional is about {used_notional:.2f} USDT; "
+                f"the configured total cap is {BYBIT_DEMO_TOTAL_BUDGET_USDT:.2f} USDT."
+            )
         # Scanner orders use the same Hedge Mode mapping as manual Demo orders.
         try:
             ex.set_position_mode(True, symbol)
@@ -560,7 +576,17 @@ def scan_once():
         ex = _public_exchange()
         ex.load_markets()
         bias = news_filter.get_market_bias()
-        for symbol in ACTIVE_PAIRS:
+        if ACTIVE_PAIRS:
+            scan_symbols = [symbol for symbol in ACTIVE_PAIRS if symbol in ex.markets]
+        elif current_exchange_name == "Bybit Demo" and market_type == "swap":
+            scan_symbols = sorted(
+                symbol for symbol, market in ex.markets.items()
+                if market.get("active", True) and market.get("swap")
+                and market.get("linear") and market.get("settle") == "USDT"
+            )
+        else:
+            scan_symbols = [current_symbol]
+        for symbol in scan_symbols:
             try:
                 candles = ex.fetch_ohlcv(symbol, timeframe=SCAN_TIMEFRAME, limit=250)
                 if not candles:
@@ -606,6 +632,10 @@ def scan_once():
         except Exception:
             pass
         return {"status": "completed", "signals": signals, "errors": errors,
+                "pairs_scanned": len(scan_symbols),
+                "watchlist": "ALL_ACTIVE_USDT_LINEAR_PERPETUALS" if not ACTIVE_PAIRS and current_exchange_name == "Bybit Demo" and market_type == "swap" else "CUSTOM",
+                "order_notional_usdt": BYBIT_DEMO_ORDER_NOTIONAL_USDT,
+                "total_demo_budget_usdt": BYBIT_DEMO_TOTAL_BUDGET_USDT,
                 "automatically_executed": bool(BYBIT_DEMO_AUTO_EXECUTION and current_exchange_name == "Bybit Demo" and market_type == "swap"),
                 "execution_mode": "BYBIT_DEMO" if BYBIT_DEMO_AUTO_EXECUTION and current_exchange_name == "Bybit Demo" and market_type == "swap" else "SIGNAL_ONLY",
                 "note": "Automatic orders are Bybit Demo only and require local trade-enabled Demo API credentials. Modules III and IV await genuine CVD/open-interest inputs."}
