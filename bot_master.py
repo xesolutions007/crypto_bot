@@ -301,7 +301,7 @@ def get_strategies():
         ],
         "automated_execution": bool(BYBIT_DEMO_AUTO_EXECUTION and current_exchange_name == "Bybit Demo" and market_type == "swap"),
         "scanner_running": bot_running,
-        "monitoring": "Background monitor active for all open paper positions",
+        "monitoring": "Bybit Demo exchange positions and protective orders are exchange-managed",
     }
 
 
