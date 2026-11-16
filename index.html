@@ -116,12 +116,7 @@
     <main>
         <!-- Header Top Bar -->
         <header>
-            <div class="exchange-tabs">
-                <button class="ex-btn" onclick="switchExchange('Binance')">BINANCE</button>
-                <button class="ex-btn active" id="bybitBtn" onclick="switchExchange('Bybit Demo')">BYBIT</button>
-                <button class="ex-btn" onclick="switchExchange('KuCoin')">KUCOIN</button>
-                <button class="ex-btn" onclick="switchExchange('Bitget')">BITGET</button>
-            </div>
+            <div class="exchange-tabs"><strong>BYBIT DEMO · USDT PERPETUAL</strong></div>
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                 <span id="scannerStatus" style="font-size:12px;color:var(--text-secondary);">Scanner: Paused</span>
                 <span id="executionModeStatus" style="font-size:11px;color:#e0b15a;">Execution: Signal only</span>
@@ -136,34 +131,17 @@
 
         <!-- Metrics Overview Bar -->
         <div class="metrics-grid">
-            <div class="metric-card">
-                <h4>Paper Account Equity (USDT)</h4>
-                <div class="value" id="totalBalance">—</div>
-                <div class="sub">Local simulation only — not Bybit balance</div>
-            </div>
-            <div class="metric-card">
+<div class="metric-card">
                 <h4>Bybit Demo Total (USDT)</h4>
                 <div class="value" id="exchangeBalance">—</div>
                 <div class="sub" id="exchangeBalanceLabel">Demo API balance not loaded</div>
             </div>
-            <div class="metric-card">
-                <h4>Total P&L (Today)</h4>
-                <div class="value" style="color: var(--accent-green);" id="todayPnl">— USDT</div>
-                <div class="sub" id="pnlPerc">Realized paper P&amp;L</div>
-            </div>
-            <div class="metric-card">
+<div class="metric-card">
                 <h4>Open Positions</h4>
-                <div class="value" id="openPos">0 Paper</div>
+                <div class="value" id="openPos">0 Demo</div>
                 <div class="sub">Bybit Demo USDT perpetual positions</div>
             </div>
-            <div class="metric-card">
-                <h4>Win Rate</h4>
-                <div class="value" id="winRate">N/A</div>
-                <div class="sub">Closed paper trades only</div>
-            </div>
-            <div class="metric-card">
-                <h4>Daily Drawdown</h4>
-                <div class="value" style="color: var(--accent-red);" id="drawdown">N/A</div>
+
                 <div class="sub">Risk metric not yet calculated</div>
             </div>
         </div>
@@ -173,7 +151,7 @@
             <!-- Left: Live TradingView Candlestick Chart -->
             <div class="panel">
                 <div class="panel-title">
-                    <span id="chartTitle">BTC/USDT 15m - Bybit Paper Trading</span>
+                    <span id="chartTitle">BTC/USDT 15m - Bybit Demo Trading</span>
                     <span style="color: var(--accent-green); font-size: 11px;" id="livePriceTicker">Market price unavailable</span>
                 </div>
                 <div id="tradingview_widget"></div>
@@ -350,17 +328,6 @@
             }
         }
 
-        async function switchExchange(ex) {
-            await fetch('/api/switch-exchange', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ exchange: ex, market_type: "swap" })
-            });
-            document.getElementById('connectionText').innerText = ex + " selected — checking...";
-            await checkExchangeConnection();
-            await fetchLiveDashboardData();
-        }
-
         async function executeQuickTrade() {
             const payload = {
                 symbol: document.getElementById('tradeSymbol').value,
@@ -404,27 +371,18 @@
         let dashboardRefreshInFlight = false;
         let lastPositionRender = '';
         let lastDemoTradesRender = '';
-        let lastPaperMetricsRender = '';
 
         async function fetchLiveDashboardData() {
             if (dashboardRefreshInFlight) return;
             dashboardRefreshInFlight = true;
             try {
                 const res = await fetch('/api/dashboard-data', {cache:'no-store'});
-                if (!res.ok) throw new Error('Paper dashboard request failed: ' + res.status);
+                if (!res.ok) throw new Error("Bybit Demo dashboard request failed: " + res.status);
                 const data = await res.json();
-                const paperMetrics = JSON.stringify([data.paper_balance, data.today_pnl, data.open_positions_count, data.win_rate, data.daily_drawdown]);
-                if (paperMetrics !== lastPaperMetricsRender) {
-                    document.getElementById('totalBalance').innerText = Number(data.paper_balance ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2});
-                    document.getElementById('todayPnl').innerText = data.today_pnl + " USDT";
-                    document.getElementById('winRate').innerText = data.win_rate;
-                    document.getElementById('drawdown').innerText = data.daily_drawdown;
-                    document.getElementById('oiVal').innerText = (data.market_intelligence.open_interest ?? "Unavailable");
-                    document.getElementById('livePriceTicker').innerText = `Price: ${data.current_price ?? 'Unavailable'} (${data.price_change ?? 'N/A'}%)`;
-                    const chartTitle = document.getElementById('chartTitle');
-                    if (chartTitle) chartTitle.innerText = `${data.active_symbol} ${data.market_type} — ${data.active_exchange}`;
-                    lastPaperMetricsRender = paperMetrics;
-                }
+                document.getElementById("oiVal").innerText = data.market_intelligence?.open_interest ?? "Unavailable";
+                document.getElementById("livePriceTicker").innerText = `Price: ${data.current_price ?? "Unavailable"} (${data.price_change ?? "N/A"}%)`;
+                const chartTitle = document.getElementById("chartTitle");
+                if (chartTitle) chartTitle.innerText = `${data.active_symbol} USDT Perpetual — BYBIT DEMO`;
                 await Promise.all([fetchOpenPositions(), fetchBybitDemoAccountAndTrades()]);
             } catch(e) {
                 console.error("Dashboard sync error:", e);
@@ -461,8 +419,8 @@
                 }
                 document.getElementById('totalTrades').innerText = trades.length + ' Demo executions';
             } catch (err) {
-                // Keep the last successful values during a transient exchange/network error.
-                labelEl.innerText = 'Demo data temporarily unavailable — retaining last update';
+                labelEl.innerText = 'DEMO API ERROR — data not refreshed';
+                document.getElementById('recentTradesTable').innerHTML = '<tr><td colspan="5">Demo trade history unavailable — check API connection</td></tr>';
                 console.warn('Bybit Demo refresh:', err);
             }
         }
@@ -502,17 +460,6 @@
                 alert('Close order submitted to Bybit Demo. Verify the fill in your account.');
                 await fetchOpenPositions();
             } catch (err) { alert('Could not close Demo position: ' + (err.message || err)); }
-        }
-
-        async function closePaperPosition(tradeId) {
-            if (!confirm('Close this local paper position at the latest available market price? This will not send an order to Bybit.')) return;
-            try {
-                const res = await fetch('/api/close-paper-trade/' + encodeURIComponent(tradeId), { method: 'POST' });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.detail || 'Could not close paper position');
-                alert('Paper position closed locally. Realized P&L: ' + Number(data.trade.realized_pnl).toFixed(4) + ' USDT. No exchange order was sent.');
-                await fetchLiveDashboardData();
-            } catch (err) { alert('Close failed: ' + String(err.message || err)); }
         }
 
         // Poll live updates every 3 seconds
