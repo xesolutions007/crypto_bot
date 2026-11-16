@@ -33,13 +33,14 @@ current_symbol = DEFAULT_SYMBOL
 market_type = "swap"
 last_connection_check: dict = {"status": "not_checked"}
 last_scan: dict = {"status": "not_started", "signals": []}
+risk_events: list = []
 monitor_task = None
 scanner_task = None
 seen_signal_keys: set[str] = set()
 latest_position_prices: dict[str, float] = {}
 
 
-(BaseModel):
+class ExchangeSwitch(BaseModel):
     exchange: str
     market_type: Literal["spot", "swap"] = "swap"
 
@@ -65,6 +66,7 @@ class DemoCloseRequest(BaseModel):
 
 
 
+@app.on_event("startup")
 async def startup():
     global scanner_task
     scanner_task = asyncio.create_task(_scanner_loop())
@@ -83,7 +85,7 @@ async def shutdown():
                 pass
 
 
-
+async def _scanner_loop():
     global last_scan
     while True:
         try:
