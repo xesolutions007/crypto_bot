@@ -134,7 +134,7 @@ def get_dashboard_data():
     except Exception as exc:
         market_error = f"{type(exc).__name__}: {str(exc)[:180]}"
 
-
+    return {
         "status": "Running" if bot_running else "Paused",
         "scanner_running": bool(bot_running),
         "active_exchange": "Bybit Demo",
