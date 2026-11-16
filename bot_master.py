@@ -1,4 +1,4 @@
-"""FastAPI backend for local paper trading and explicitly enabled Bybit Demo Futures.
+"""FastAPI backend for Bybit Demo USDT perpetual Futures only.
 
 Live trading is hard-disabled in config.py. Exchange credentials remain local.
 """
@@ -16,20 +16,19 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from config import (
-    ACTIVE_PAIRS, DEFAULT_EXCHANGE, DEFAULT_SYMBOL, PAPER_CAPITAL_USDT,
+    ACTIVE_PAIRS, DEFAULT_EXCHANGE, DEFAULT_SYMBOL,
     SCAN_TIMEFRAME, SCAN_INTERVAL_SECONDS, LEVERAGE, TARGET_RR, LIVE_TRADING_ENABLED,
     BYBIT_DEMO_AUTO_EXECUTION, BYBIT_DEMO_ORDER_NOTIONAL_USDT, BYBIT_DEMO_TOTAL_BUDGET_USDT,
 )
-import paper_trading
-from exchange_manager import create_exchange, connection_check, SUPPORTED_EXCHANGES
+from exchange_manager import create_exchange, connection_check
 import bybit_demo
 from news_filter import NewsSentimentFilter
 from strategies import StrategyModules
 
-app = FastAPI(title="Multi-Exchange Trading Module Bot")
+app = FastAPI(title="Bybit Demo Futures Bot")
 news_filter = NewsSentimentFilter()
 bot_running = False
-current_exchange_name = DEFAULT_EXCHANGE
+current_exchange_name = "Bybit Demo"
 current_symbol = DEFAULT_SYMBOL
 market_type = "swap"
 last_connection_check: dict = {"status": "not_checked"}
@@ -40,11 +39,7 @@ seen_signal_keys: set[str] = set()
 latest_position_prices: dict[str, float] = {}
 
 
-class CapitalUpdate(BaseModel):
-    capital: float = Field(gt=0, le=1_000_000_000)
-
-
-class ExchangeSwitch(BaseModel):
+(BaseModel):
     exchange: str
     market_type: Literal["spot", "swap"] = "swap"
 
@@ -69,29 +64,15 @@ class DemoCloseRequest(BaseModel):
     position_idx: int = Field(ge=0, le=2)
 
 
-class PaperTradeRequest(BaseModel):
-    side: Literal["LONG", "SHORT"]
-    size: float = Field(gt=0, le=1_000_000)
-    symbol: str = Field(default=DEFAULT_SYMBOL, min_length=3, max_length=40)
-    strategy: str = "Manual Paper Trade"
-    stop_loss: Optional[float] = Field(default=None, gt=0)
-    take_profit: Optional[float] = Field(default=None, gt=0)
-    leverage: float = Field(default=LEVERAGE, ge=1, le=125)
 
-
-@app.on_event("startup")
 async def startup():
-    global monitor_task, scanner_task
-    paper_trading.initialize()
-    if not paper_trading.account()["configured"]:
-        paper_trading.set_capital(PAPER_CAPITAL_USDT)
-    monitor_task = asyncio.create_task(_position_monitor_loop())
+    global scanner_task
     scanner_task = asyncio.create_task(_scanner_loop())
 
 
 @app.on_event("shutdown")
 async def shutdown():
-    for task in (monitor_task, scanner_task):
+    for task in (scanner_task,):
         if task:
             task.cancel()
     for task in (monitor_task, scanner_task):
@@ -102,59 +83,7 @@ async def shutdown():
                 pass
 
 
-async def _position_monitor_loop():
-    """Continuously monitor all open paper positions, independent of dashboard views."""
-    while True:
-        try:
-            open_trades = await asyncio.to_thread(paper_trading.list_trades, "OPEN", 1000)
-            grouped = {}
-            for trade in open_trades:
-                grouped.setdefault((trade["exchange"], trade["market_type"]), set()).add(trade["symbol"])
-            prices = {}
-            for (exchange_name, trade_market_type), symbols in grouped.items():
-                ex = None
-                try:
-                    ex = create_exchange(exchange_name, trade_market_type, require_auth=False)
-                    ex.load_markets()
-                    for symbol in symbols:
-                        last = ex.fetch_ticker(symbol).get("last")
-                        if last and float(last) > 0:
-                            prices[exchange_name + "|" + symbol] = float(last)
-                        if trade_market_type == "swap" and ex.has.get("fetchFundingRate"):
-                            try:
-                                funding = ex.fetch_funding_rate(symbol)
-                                rate = funding.get("fundingRate")
-                                settlement_ms = funding.get("nextFundingTimestamp")
-                                if rate is not None and settlement_ms:
-                                    funding_events = await asyncio.to_thread(
-                                        paper_trading.apply_funding_rate,
-                                        exchange_name, symbol, float(rate), int(settlement_ms), float(last)
-                                    )
-                                    if funding_events:
-                                        last_scan["funding_events"] = funding_events
-                            except Exception as funding_exc:
-                                print(f"Funding data warning [{exchange_name} {symbol}]: {type(funding_exc).__name__}: {str(funding_exc)[:140]}")
-                except Exception as exc:
-                    print(f"Paper monitor warning [{exchange_name}]: {type(exc).__name__}: {str(exc)[:160]}")
-                finally:
-                    if ex:
-                        try:
-                            ex.close()
-                        except Exception:
-                            pass
-            if prices:
-                latest_position_prices.update(prices)
-                events = await asyncio.to_thread(paper_trading.monitor_open_trades, prices)
-                if events:
-                    last_scan["risk_events"] = events
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            print(f"Paper monitor loop warning: {type(exc).__name__}: {str(exc)[:160]}")
-        await asyncio.sleep(5)
 
-
-async def _scanner_loop():
     global last_scan
     while True:
         try:
@@ -177,13 +106,13 @@ def serve_dashboard():
 
 def _public_exchange():
     # Public market data can be fetched without API credentials.
-    return create_exchange(current_exchange_name, market_type, require_auth=False)
+    return create_exchange("Bybit Demo", "swap", require_auth=False)
 
 
 @app.get("/api/connection-check")
 def api_connection_check():
     global last_connection_check
-    last_connection_check = connection_check(current_exchange_name, market_type)
+    last_connection_check = connection_check("Bybit Demo", "swap")
     return last_connection_check
 
 
@@ -205,25 +134,12 @@ def get_dashboard_data():
     except Exception as exc:
         market_error = f"{type(exc).__name__}: {str(exc)[:180]}"
 
-    dashboard_prices = dict(latest_position_prices)
-    if price:
-        dashboard_prices[current_exchange_name + "|" + current_symbol] = float(price)
-    paper = paper_trading.mark_to_market(dashboard_prices)
-    risk_events = []
-    trades = paper_trading.list_trades(limit=10)
-    closed = [t for t in trades if t["status"] == "CLOSED"]
-    wins = [t for t in closed if (t["realized_pnl"] or 0) > 0]
-    win_rate = (len(wins) / len(closed) * 100) if closed else None
-    realized_today = sum(
-        (t["realized_pnl"] or 0) for t in closed
-        if (t["closed_at"] or "")[:10] == datetime.now(timezone.utc).date().isoformat()
-    )
-    return {
+
         "status": "Running" if bot_running else "Paused",
         "scanner_running": bool(bot_running),
-        "active_exchange": current_exchange_name,
+        "active_exchange": "Bybit Demo",
         "active_symbol": current_symbol,
-        "market_type": market_type,
+        "market_type": "swap",
         "live_trading_enabled": LIVE_TRADING_ENABLED,
         "bybit_demo_auto_execution": BYBIT_DEMO_AUTO_EXECUTION,
         "connection_status": last_connection_check.get("status", "not_checked"),
@@ -231,13 +147,6 @@ def get_dashboard_data():
         "exchange_balance_label": "Bybit Demo available USDT" if last_connection_check.get("authenticated") else "Not authenticated",
         "exchange_authenticated": bool(last_connection_check.get("authenticated")),
         "exchange_account_check": last_connection_check.get("account_check", "not_checked"),
-        "paper_balance": round(paper.get("equity", paper.get("cash_balance", 0)), 4),
-        "paper_cash": round(paper.get("cash_balance", 0), 4),
-        "today_pnl": round(realized_today, 4),
-        "pnl_percentage": None,
-        "open_positions_count": paper.get("open_positions", 0),
-        "win_rate": f"{win_rate:.1f}%" if win_rate is not None else "N/A",
-        "daily_drawdown": "N/A",
         "current_price": price,
         "price_change": price_change,
         "market_data_error": market_error,
@@ -250,14 +159,6 @@ def get_dashboard_data():
             "cvd_spot": None,
             "status": "Provider not configured",
         },
-        "recent_trades": [
-            {
-                "id": t["id"], "time": t["opened_at"], "pair": t["symbol"],
-                "type": t["side"], "price": t["entry_price"], "size": t["quantity"],
-                "pnl": t["realized_pnl"], "status": t["status"],
-                "exchange": t["exchange"], "strategy": t["strategy"],
-            } for t in trades
-        ],
         "news": [],
         "news_bias": "UNAVAILABLE",
     }
@@ -266,10 +167,10 @@ def get_dashboard_data():
 @app.post("/api/switch-exchange")
 def switch_exchange(data: ExchangeSwitch):
     global current_exchange_name, market_type, last_connection_check
-    if data.exchange not in SUPPORTED_EXCHANGES:
-        raise HTTPException(400, "Unsupported exchange.")
-    current_exchange_name = data.exchange
-    market_type = data.market_type
+    if data.exchange != "Bybit Demo" or data.market_type != "swap":
+        raise HTTPException(400, "Only Bybit Demo USDT perpetual Futures are supported.")
+    current_exchange_name = "Bybit Demo"
+    market_type = "swap"
     last_connection_check = {"status": "not_checked"}
     return {"status": "selected", "active_exchange": current_exchange_name,
             "market_type": market_type, "note": "Run connection check to verify access."}
@@ -305,79 +206,6 @@ def toggle_bot():
     }
 
 
-@app.post("/api/capital")
-def update_capital(data: CapitalUpdate):
-    try:
-        result = paper_trading.set_capital(data.capital)
-        return {"status": "success", "paper_account": result}
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
-
-
-@app.post("/api/place-trade")
-def place_paper_trade(data: PaperTradeRequest):
-    # This endpoint ONLY creates a local SQLite paper trade.
-    try:
-        ex = _public_exchange()
-        ex.load_markets()
-        if data.symbol not in ex.markets:
-            raise HTTPException(400, f"{data.symbol} is not available on {current_exchange_name}.")
-        ticker = ex.fetch_ticker(data.symbol)
-        entry = ticker.get("last")
-        try:
-            ex.close()
-        except Exception:
-            pass
-        if not entry or entry <= 0:
-            raise HTTPException(502, "Exchange did not return a valid market price.")
-        notional = float(data.size)
-        quantity = notional / float(entry)
-        trade = paper_trading.open_trade(
-            exchange=current_exchange_name, market_type=market_type,
-            symbol=data.symbol, strategy=data.strategy, side=data.side,
-            entry_price=float(entry), quantity=quantity,
-            stop_loss=data.stop_loss, take_profit=data.take_profit,
-            leverage=data.leverage, target_rr=TARGET_RR,
-        )
-        return {"status": "paper_trade_opened", "trade": trade,
-                "warning": "Local simulation only. No exchange order was sent.",
-                "margin_required": trade["margin_used"],
-                "leverage": trade["leverage"],
-                "risk_monitoring": "Enabled only when a stop-loss is supplied."}
-    except HTTPException:
-        raise
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
-    except Exception as exc:
-        raise HTTPException(502, f"Could not create paper trade: {type(exc).__name__}: {str(exc)[:180]}")
-
-
-@app.post("/api/close-paper-trade/{trade_id}")
-def close_paper_trade(trade_id: str):
-    """Close a local paper position at the latest exchange ticker; never submits an order."""
-    trade = next((t for t in paper_trading.list_trades(status="OPEN", limit=1000) if t["id"] == trade_id), None)
-    if trade is None:
-        raise HTTPException(404, "Open paper trade not found.")
-    try:
-        price = latest_position_prices.get(trade["exchange"] + "|" + trade["symbol"])
-        if not price:
-            ex = create_exchange(trade["exchange"], trade["market_type"], require_auth=False)
-            try:
-                ex.load_markets()
-                price = ex.fetch_ticker(trade["symbol"]).get("last")
-            finally:
-                try: ex.close()
-                except Exception: pass
-        if not price or float(price) <= 0:
-            raise HTTPException(502, "Could not obtain a current market price. Try again shortly.")
-        closed = paper_trading.close_trade(trade_id, float(price))
-        return {"status": "closed", "trade": closed, "exit_reference_price": float(price),
-                "warning": "Local paper position closed only. No exchange order was sent."}
-    except HTTPException: raise
-    except ValueError as exc: raise HTTPException(400, str(exc))
-    except Exception as exc: raise HTTPException(502, f"Could not close paper position: {type(exc).__name__}: {str(exc)[:160]}")
-
-
 @app.get("/api/open-positions")
 def get_open_positions():
     try:
@@ -385,14 +213,6 @@ def get_open_positions():
         return {"positions": positions, "count": len(positions), "mode": "BYBIT_DEMO"}
     except Exception as exc:
         raise HTTPException(502, f"Could not load Bybit Demo positions: {type(exc).__name__}: {str(exc)[:180]}")
-
-
-@app.get("/api/paper-trades")
-def get_paper_trades(status: Optional[str] = None, limit: int = 100):
-    try:
-        return {"trades": paper_trading.list_trades(status=status, limit=limit)}
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
 
 
 @app.get("/api/bybit-demo/account")
